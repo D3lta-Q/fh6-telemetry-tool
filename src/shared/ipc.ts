@@ -1,0 +1,20 @@
+/**
+ * IPC channel names used between the main and renderer processes.
+ * Keeping these in one place prevents typo-driven bugs.
+ */
+export const IPC = {
+  /** Main -> Renderer. Pushed every time a packet is parsed. Payload: TelemetryData. */
+  TELEMETRY_PACKET: 'telemetry:packet',
+  /** Main -> Renderer. Pushed when listener status changes. Payload: ListenerStatus. */
+  LISTENER_STATUS: 'listener:status',
+  /** Renderer -> Main (invoke). Returns current ListenerStatus. */
+  GET_LISTENER_STATUS: 'listener:get-status',
+  /** Renderer -> Main (invoke). Returns current AppSettings. */
+  GET_SETTINGS: 'settings:get',
+  /** Renderer -> Main (invoke). Persists partial AppSettings, returns merged result. */
+  SET_SETTINGS: 'settings:set',
+  /** Renderer -> Main (invoke). Restarts the listener on a new port. Returns ListenerStatus. */
+  RESTART_LISTENER: 'listener:restart',
+} as const;
+
+export type IpcChannel = (typeof IPC)[keyof typeof IPC];

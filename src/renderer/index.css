@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    /* Subtle radial darkening at the edges - gives the dashboard a "monitor in a dark room" feel. */
+    background-image: radial-gradient(
+      ellipse at center,
+      #101116 0%,
+      #0a0a0b 70%,
+      #050506 100%
+    );
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+
+  /* Thin, technical scrollbars that suit the data-engineer aesthetic. */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2b30;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3b42;
+  }
+}
+
+@layer components {
+  /* uPlot's default theme is light - we replace it entirely. */
+  .uplot,
+  .uplot * {
+    font-family: 'Geist Mono', ui-monospace, monospace !important;
+  }
+  .uplot .u-legend {
+    color: #8b8c93;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .uplot .u-legend .u-marker {
+    border-radius: 1px;
+  }
+  .uplot .u-axis {
+    color: #5a5b62;
+  }
+
+  /* A faint scanline texture for the surface panels - barely visible but
+     adds that "instrument cluster" feel without being distracting. */
+  .panel-grain {
+    position: relative;
+  }
+  .panel-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.012) 0px,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    border-radius: inherit;
+  }
+
+  .data-readout {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-feature-settings: 'tnum' on, 'ss01' on;
+    font-variant-numeric: tabular-nums;
+  }
+}

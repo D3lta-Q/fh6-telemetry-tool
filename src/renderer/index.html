@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy. Tight enough to keep our renderer honest, but
+      permissive enough to let Vite's HMR (websocket + inline scripts) work in
+      dev mode. If you want a stricter prod CSP, set it from the main process
+      via session.defaultSession.webRequest.onHeadersReceived instead.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' https://fonts.gstatic.com;
+        img-src 'self' data:;
+        connect-src 'self' ws: wss: http: https:;
+      "
+    />
+    <title>Forza Telemetry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-bg text-text font-sans antialiased">
+    <div id="root"></div>
+    <!-- Relative path because Vite's root is src/renderer/ (set in electron.vite.config.ts). -->
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
