@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
 import type { AppSettings, ListenerStatus, RecordingStatus, TelemetryData } from '@shared/telemetry';
+import type { FztSession } from '@shared/track';
 
 /**
  * The API surface that contextBridge exposes to the renderer.
@@ -18,6 +19,8 @@ export interface ForzaApi {
   restartListener: (port: number) => Promise<ListenerStatus | null>;
   startRecording: () => Promise<RecordingStatus>;
   stopRecording: () => Promise<RecordingStatus>;
+  saveTrackSession: (session: FztSession) => Promise<'saved' | 'cancelled'>;
+  openTrackSession: () => Promise<FztSession | null>;
 }
 
 const api: ForzaApi = {
@@ -42,6 +45,8 @@ const api: ForzaApi = {
   restartListener: (port) => ipcRenderer.invoke(IPC.RESTART_LISTENER, port),
   startRecording: () => ipcRenderer.invoke(IPC.START_RECORDING),
   stopRecording: () => ipcRenderer.invoke(IPC.STOP_RECORDING),
+  saveTrackSession: (session) => ipcRenderer.invoke(IPC.SAVE_TRACK_SESSION, session),
+  openTrackSession: () => ipcRenderer.invoke(IPC.OPEN_TRACK_SESSION),
 };
 
 contextBridge.exposeInMainWorld('forza', api);

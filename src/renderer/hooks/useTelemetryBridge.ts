@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTelemetryStore } from '../store/telemetryStore';
 import { useRecordingStore } from '../store/recordingStore';
+import { useTrackStore } from '../store/trackStore';
 
 /**
  * Wire the preload IPC events into the Zustand stores. Call once at app root.
@@ -14,6 +15,7 @@ export function useTelemetryBridge(): void {
   const pushPacket = useTelemetryStore((s) => s.pushPacket);
   const setStatus = useTelemetryStore((s) => s.setStatus);
   const setRecording = useRecordingStore((s) => s.setRecording);
+  const pushTrack = useTrackStore((s) => s.pushTelemetry);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,7 +23,10 @@ export function useTelemetryBridge(): void {
       if (!cancelled && status) setStatus(status);
     });
 
-    const offPacket = window.forza.onTelemetry((data) => pushPacket(data));
+    const offPacket = window.forza.onTelemetry((data) => {
+      pushPacket(data);
+      pushTrack(data);
+    });
     const offStatus = window.forza.onListenerStatus((status) => setStatus(status));
     const offRecording = window.forza.onRecordingStatus((status) => {
       setRecording(status.isRecording, status.startedAt);
@@ -33,5 +38,5 @@ export function useTelemetryBridge(): void {
       offStatus();
       offRecording();
     };
-  }, [pushPacket, setStatus, setRecording]);
+  }, [pushPacket, setStatus, setRecording, pushTrack]);
 }

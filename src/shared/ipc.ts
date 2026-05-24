@@ -21,6 +21,10 @@ export const IPC = {
   STOP_RECORDING: 'recording:stop',
   /** Main -> Renderer. Pushed when recording state changes (start/stop/hotkey). Payload: RecordingStatus. */
   RECORDING_STATUS: 'recording:status',
+  /** Renderer -> Main (invoke). Opens save dialog and writes a .fzt file. Payload: FztSession. Returns 'saved' | 'cancelled'. */
+  SAVE_TRACK_SESSION: 'track:save',
+  /** Renderer -> Main (invoke). Opens a .fzt file via dialog. Returns FztSession or null if cancelled. */
+  OPEN_TRACK_SESSION: 'track:open',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

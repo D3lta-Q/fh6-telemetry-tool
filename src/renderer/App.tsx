@@ -3,8 +3,11 @@ import { useTelemetryBridge } from './hooks/useTelemetryBridge';
 import { useSettingsStore } from './store/settingsStore';
 import { TopBar } from './components/TopBar';
 import { Dashboard } from './components/Dashboard';
+import { TrackTab } from './components/TrackTab';
 import { Settings } from './components/Settings';
 import { PanelsDrawer } from './components/PanelsDrawer';
+
+type AppTab = 'dashboard' | 'track';
 
 /**
  * Root component.
@@ -23,6 +26,7 @@ export function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelsOpen, setPanelsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
 
   useEffect(() => {
     load();
@@ -63,9 +67,42 @@ export function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPanels={() => setPanelsOpen(true)}
       />
-      <Dashboard />
+
+      {/* Tab bar */}
+      <div className="flex items-center gap-0 px-4 border-b border-border bg-bg-surface shrink-0">
+        <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')}>
+          Dashboard
+        </TabButton>
+        <TabButton active={activeTab === 'track'} onClick={() => setActiveTab('track')}>
+          Track
+        </TabButton>
+      </div>
+
+      {/* Tab content — both mount so the 3D scene stays alive when switching */}
+      <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'dashboard' ? '' : 'hidden'}`}>
+        <Dashboard />
+      </div>
+      <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'track' ? '' : 'hidden'}`}>
+        <TrackTab />
+      </div>
+
       <PanelsDrawer open={panelsOpen} onClose={() => setPanelsOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-[11px] font-mono uppercase tracking-wider border-b-2 transition-colors ${
+        active
+          ? 'border-[#00d4ff] text-text'
+          : 'border-transparent text-text-dim hover:text-text-muted'
+      }`}
+    >
+      {children}
+    </button>
   );
 }

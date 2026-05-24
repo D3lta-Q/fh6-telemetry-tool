@@ -1,7 +1,9 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
 import { IPC } from '@shared/ipc';
 import type { AppSettings } from '@shared/telemetry';
+import type { FztSession } from '@shared/track';
 import { ForzaUdpServer } from './udpServer';
 import { getSettings, setSettings } from './settings';
 import { Recorder } from './recorder';
@@ -140,6 +142,38 @@ function registerIpcHandlers(): void {
     const status = await recorder.stop();
     mainWindow?.webContents.send(IPC.RECORDING_STATUS, status);
     return status;
+  });
+
+  ipcMain.handle(IPC.SAVE_TRACK_SESSION, async (_event, session: FztSession) => {
+    const d = new Date(session.startedAt);
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const YYYY = d.getFullYear();
+    const HH = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const SS = String(d.getSeconds()).padStart(2, '0');
+    const ts = `${MM}-${DD}-${YYYY}_${HH}-${mm}-${SS}`;
+    const result = await dialog.showSaveDialog({
+      title: 'Save Track Session',
+      defaultPath: `forza-track-${session.mode}-${ts}.fzt`,
+      filters: [{ name: 'Forza Track Session', extensions: ['fzt'] }],
+    });
+    if (!result.canceled && result.filePath) {
+      await writeFile(result.filePath, JSON.stringify(session));
+      return 'saved';
+    }
+    return 'cancelled';
+  });
+
+  ipcMain.handle(IPC.OPEN_TRACK_SESSION, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Open Track Session',
+      filters: [{ name: 'Forza Track Session', extensions: ['fzt'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const raw = await readFile(result.filePaths[0], 'utf-8');
+    return JSON.parse(raw) as FztSession;
   });
 }
 
