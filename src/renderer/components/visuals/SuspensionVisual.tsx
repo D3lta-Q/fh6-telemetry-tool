@@ -26,31 +26,16 @@ export function SuspensionVisual() {
   return (
     <div className="w-full h-full flex items-center justify-center">
       <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
-        {/* Car body silhouette - simple top-down outline */}
-        <rect
+        {/* Car body silhouette */}
+        <image
+          href="/car-icon.svg"
           x="80"
           y="40"
           width="160"
           height="140"
-          rx="22"
-          ry="22"
-          fill="#15161a"
-          stroke="#3a3b42"
-          strokeWidth="1"
+          preserveAspectRatio="xMidYMid meet"
+          style={{ filter: 'invert(1)', opacity: 0.25 }}
         />
-        {/* Windshield/roof line for orientation */}
-        <rect x="105" y="80" width="110" height="60" rx="6" fill="#0f1014" stroke="#26272d" />
-        <text
-          x="160"
-          y="115"
-          textAnchor="middle"
-          fill="#5a5b62"
-          fontSize="9"
-          fontFamily="Geist Mono, monospace"
-          letterSpacing="0.2em"
-        >
-          FRONT
-        </text>
         <text
           x="160"
           y="200"
