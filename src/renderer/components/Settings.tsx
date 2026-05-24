@@ -140,6 +140,16 @@ export function Settings({ open, onClose }: SettingsProps) {
             </Field>
           </Section>
 
+          {/* Display section */}
+          <Section title="Display" tag="APPEARANCE">
+            <Field label="Panel scale" hint="Zoom all dashboard panels in or out.">
+              <ScaleSlider
+                value={settings.uiScale}
+                onChange={(v) => update({ uiScale: v })}
+              />
+            </Field>
+          </Section>
+
           {/* Engine section */}
           <Section title="Engine graph" tag="POWERTRAIN">
             <Field label="Series colors">
@@ -335,6 +345,35 @@ function ColorRow({
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 h-7 px-2 rounded border border-border-muted bg-bg-input font-mono text-xs text-text focus:outline-none focus:border-border-accent"
       />
+    </div>
+  );
+}
+
+function ScaleSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const pct = Math.round(value * 100);
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        type="range"
+        min={0.6}
+        max={1.4}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-bg-input accent-[#00d4ff]"
+      />
+      <span className="text-xs font-mono text-text-muted w-9 text-right tabular-nums">
+        {pct}%
+      </span>
+      {value !== 1 && (
+        <button
+          onClick={() => onChange(1)}
+          className="h-6 px-2 rounded border border-border-muted bg-bg-input text-[10px] font-mono text-text-dim hover:text-text hover:border-border transition-colors"
+          title="Reset to 100%"
+        >
+          reset
+        </button>
+      )}
     </div>
   );
 }
