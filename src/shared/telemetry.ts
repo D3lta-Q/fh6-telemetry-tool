@@ -156,6 +156,16 @@ export interface TelemetryData {
 }
 
 /**
+ * Status of the active recording session.
+ */
+export interface RecordingStatus {
+  isRecording: boolean;
+  /** ms since epoch when the recording started, or null if not recording. */
+  startedAt: number | null;
+  packetCount: number;
+}
+
+/**
  * Status of the UDP listener as observed by the main process.
  */
 export interface ListenerStatus {
@@ -195,6 +205,8 @@ export interface AppSettings {
   showInputsGraph: boolean;
   /** Scale factor applied to all dashboard panels (0.6–1.4). Default 1. */
   uiScale: number;
+  /** Electron accelerator string for the global record hotkey. Default 'F9'. */
+  recordHotkey: string;
   /**
    * Per-panel visibility. Hidden panels are removed from the dashboard grid;
    * remaining panels reflow to fill the freed space.
@@ -225,6 +237,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showTireGripGraph: false,
   showInputsGraph: false,
   uiScale: 1,
+  recordHotkey: 'F9',
   visiblePanels: {
     engine: true,
     inputs: true,

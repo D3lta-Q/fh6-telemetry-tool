@@ -1,5 +1,6 @@
 import { useTelemetryStore } from '../store/telemetryStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useRecordingStore } from '../store/recordingStore';
 import { useAnimationTick } from '../hooks/useAnimationTick';
 import { StatPill, SegmentedControl } from './ui';
 import { TIME_WINDOW_OPTIONS } from '@shared/telemetry';
@@ -23,6 +24,15 @@ function formatPacketAge(lastPacketAt: number | null): string {
   return `${Math.floor(ageMs / 60_000)}m`;
 }
 
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 interface TopBarProps {
   onOpenSettings: () => void;
   onOpenPanels: () => void;
@@ -44,6 +54,8 @@ export function TopBar({ onOpenSettings, onOpenPanels }: TopBarProps) {
   const latest = useTelemetryStore.getState().latest;
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.update);
+  const isRecording = useRecordingStore((s) => s.isRecording);
+  const elapsedMs = useRecordingStore((s) => s.elapsedMs);
 
   const isLive = status?.lastPacketAt !== null && status?.lastPacketAt !== undefined
     && Date.now() - status.lastPacketAt < 1500;
@@ -139,6 +151,31 @@ export function TopBar({ onOpenSettings, onOpenPanels }: TopBarProps) {
             />
             <StatPill label="PI" value={String(latest.carPerformanceIndex || '—')} />
           </>
+        )}
+
+        {/* Record / Stop Recording button */}
+        {isRecording ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono tabular-nums text-accent-red animate-pulse-fast">
+              ● {formatElapsed(elapsedMs)}
+            </span>
+            <button
+              onClick={() => void window.forza.stopRecording()}
+              className="h-8 px-3 inline-flex items-center gap-1.5 rounded border border-accent-red/60 bg-accent-red/15 text-accent-red hover:bg-accent-red/25 transition-colors"
+              title="Stop recording and save"
+            >
+              <span className="text-[11px] font-mono uppercase tracking-wider">Stop Recording</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => void window.forza.startRecording()}
+            className="h-8 px-3 inline-flex items-center gap-1.5 rounded border border-border-muted bg-bg-input hover:border-border text-text-muted hover:text-text transition-colors"
+            title={`Record telemetry session (${settings.recordHotkey})`}
+          >
+            <span className="inline-block h-2 w-2 rounded-full bg-text-dim" />
+            <span className="text-[11px] font-mono uppercase tracking-wider">Record</span>
+          </button>
         )}
 
         <button

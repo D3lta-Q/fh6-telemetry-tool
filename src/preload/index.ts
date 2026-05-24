@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
-import type { AppSettings, ListenerStatus, TelemetryData } from '@shared/telemetry';
+import type { AppSettings, ListenerStatus, RecordingStatus, TelemetryData } from '@shared/telemetry';
 
 /**
  * The API surface that contextBridge exposes to the renderer.
@@ -11,10 +11,13 @@ import type { AppSettings, ListenerStatus, TelemetryData } from '@shared/telemet
 export interface ForzaApi {
   onTelemetry: (cb: (data: TelemetryData) => void) => () => void;
   onListenerStatus: (cb: (status: ListenerStatus) => void) => () => void;
+  onRecordingStatus: (cb: (status: RecordingStatus) => void) => () => void;
   getListenerStatus: () => Promise<ListenerStatus | null>;
   getSettings: () => Promise<AppSettings>;
   setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
   restartListener: (port: number) => Promise<ListenerStatus | null>;
+  startRecording: () => Promise<RecordingStatus>;
+  stopRecording: () => Promise<RecordingStatus>;
 }
 
 const api: ForzaApi = {
@@ -28,10 +31,17 @@ const api: ForzaApi = {
     ipcRenderer.on(IPC.LISTENER_STATUS, handler);
     return () => ipcRenderer.removeListener(IPC.LISTENER_STATUS, handler);
   },
+  onRecordingStatus(cb) {
+    const handler = (_event: Electron.IpcRendererEvent, status: RecordingStatus) => cb(status);
+    ipcRenderer.on(IPC.RECORDING_STATUS, handler);
+    return () => ipcRenderer.removeListener(IPC.RECORDING_STATUS, handler);
+  },
   getListenerStatus: () => ipcRenderer.invoke(IPC.GET_LISTENER_STATUS),
   getSettings: () => ipcRenderer.invoke(IPC.GET_SETTINGS),
   setSettings: (patch) => ipcRenderer.invoke(IPC.SET_SETTINGS, patch),
   restartListener: (port) => ipcRenderer.invoke(IPC.RESTART_LISTENER, port),
+  startRecording: () => ipcRenderer.invoke(IPC.START_RECORDING),
+  stopRecording: () => ipcRenderer.invoke(IPC.STOP_RECORDING),
 };
 
 contextBridge.exposeInMainWorld('forza', api);

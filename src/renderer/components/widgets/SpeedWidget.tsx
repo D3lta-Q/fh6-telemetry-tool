@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useAnimationTick } from '../../hooks/useAnimationTick';
+import { useEffectiveTimeWindow } from '../../hooks/useEffectiveTimeWindow';
 import { convertSpeed, formatGear, speedUnitLabel } from '../../lib/units';
 import { Widget } from '../Widget';
 import { Readout, SegmentedControl } from '../ui';
@@ -24,6 +25,7 @@ export function SpeedWidget() {
   const buffer = useTelemetryStore.getState().speedBuffer;
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
+  const windowSec = useEffectiveTimeWindow();
 
   const unit = settings.speedUnit;
   const rawSpeed = latest?.speed ?? 0;
@@ -69,7 +71,7 @@ export function SpeedWidget() {
     >
       <LiveLineChart
         buffer={buffer}
-        windowSec={settings.globalTimeWindow}
+        windowSec={windowSec}
         series={series}
         height="auto"
       />

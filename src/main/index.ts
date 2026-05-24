@@ -1,15 +1,18 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { IPC } from '@shared/ipc';
 import type { AppSettings } from '@shared/telemetry';
 import { ForzaUdpServer } from './udpServer';
 import { getSettings, setSettings } from './settings';
+import { Recorder } from './recorder';
 
 // Disable hardware acceleration only if we hit issues on Linux/older GPUs.
 // We leave it on by default because the graphs benefit from GPU compositing.
 
 let mainWindow: BrowserWindow | null = null;
 let server: ForzaUdpServer | null = null;
+const recorder = new Recorder();
+let registeredHotkey: string | null = null;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -47,6 +50,31 @@ function createMainWindow(): void {
   }
 }
 
+function registerRecordHotkey(hotkey: string): void {
+  if (registeredHotkey) {
+    globalShortcut.unregister(registeredHotkey);
+    registeredHotkey = null;
+  }
+  try {
+    const ok = globalShortcut.register(hotkey, () => {
+      void toggleRecording();
+    });
+    if (ok) registeredHotkey = hotkey;
+  } catch {
+    // Invalid accelerator string - silently skip registration.
+  }
+}
+
+async function toggleRecording(): Promise<void> {
+  if (recorder.status.isRecording) {
+    const status = await recorder.stop();
+    mainWindow?.webContents.send(IPC.RECORDING_STATUS, status);
+  } else {
+    const status = recorder.start();
+    mainWindow?.webContents.send(IPC.RECORDING_STATUS, status);
+  }
+}
+
 function startServer(port: number): void {
   if (server) {
     server.stop();
@@ -58,6 +86,7 @@ function startServer(port: number): void {
     // Stream every parsed packet to the renderer. At 60 Hz this is well within
     // IPC throughput; the renderer is responsible for any further coalescing.
     mainWindow?.webContents.send(IPC.TELEMETRY_PACKET, data);
+    recorder.push(data);
   });
 
   server.on('status', (status) => {
@@ -82,9 +111,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.SET_SETTINGS, (_event, patch: Partial<AppSettings>) => {
     const next = setSettings(patch);
-    // If the port changed, restart the listener so the UI feels responsive.
     if (patch.port !== undefined && server && patch.port !== server.getStatus().port) {
       void server.restart(patch.port);
+    }
+    if (patch.recordHotkey !== undefined) {
+      registerRecordHotkey(patch.recordHotkey);
     }
     return next;
   });
@@ -98,12 +129,26 @@ function registerIpcHandlers(): void {
     }
     return server.restart(port);
   });
+
+  ipcMain.handle(IPC.START_RECORDING, () => {
+    const status = recorder.start();
+    mainWindow?.webContents.send(IPC.RECORDING_STATUS, status);
+    return status;
+  });
+
+  ipcMain.handle(IPC.STOP_RECORDING, async () => {
+    const status = await recorder.stop();
+    mainWindow?.webContents.send(IPC.RECORDING_STATUS, status);
+    return status;
+  });
 }
 
 app.whenReady().then(() => {
   registerIpcHandlers();
   createMainWindow();
-  startServer(getSettings().port);
+  const settings = getSettings();
+  startServer(settings.port);
+  registerRecordHotkey(settings.recordHotkey);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -120,4 +165,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   server?.stop();
+  globalShortcut.unregisterAll();
+  recorder.abort();
 });

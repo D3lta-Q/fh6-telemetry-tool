@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useEffectiveTimeWindow } from '../../hooks/useEffectiveTimeWindow';
 import { Widget } from '../Widget';
 import { IconButton } from '../ui';
 import { LiveLineChart, type LiveLineChartSeries } from '../charts/LiveLineChart';
@@ -18,6 +19,7 @@ export function TireGripWidget() {
   const buffer = useTelemetryStore((s) => s.tireGripBuffer);
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
+  const windowSec = useEffectiveTimeWindow();
 
   const series: LiveLineChartSeries[] = useMemo(
     () => [
@@ -51,7 +53,7 @@ export function TireGripWidget() {
           <div className="min-h-0 flex flex-col">
             <LiveLineChart
               buffer={buffer}
-              windowSec={settings.globalTimeWindow}
+              windowSec={windowSec}
               series={series}
               height="auto"
               yRange={[0, 2]}

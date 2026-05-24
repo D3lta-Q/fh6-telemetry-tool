@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useAnimationTick } from '../../hooks/useAnimationTick';
+import { useEffectiveTimeWindow } from '../../hooks/useEffectiveTimeWindow';
 import { wattsToHp } from '../../lib/units';
 import { Widget } from '../Widget';
 import { Readout } from '../ui';
@@ -33,6 +34,7 @@ export function EngineWidget() {
   const latest = useTelemetryStore.getState().latest;
   const buffer = useTelemetryStore.getState().engineBuffer;
   const settings = useSettingsStore((s) => s.settings);
+  const windowSec = useEffectiveTimeWindow();
 
   const rpm = latest?.currentEngineRpm ?? 0;
   const maxRpm = latest?.engineMaxRpm ?? 8000;
@@ -165,7 +167,7 @@ export function EngineWidget() {
 
       <LiveLineChart
         buffer={buffer}
-        windowSec={settings.globalTimeWindow}
+        windowSec={windowSec}
         series={series}
         yAxes={yAxes}
         height="auto"

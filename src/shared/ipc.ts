@@ -15,6 +15,12 @@ export const IPC = {
   SET_SETTINGS: 'settings:set',
   /** Renderer -> Main (invoke). Restarts the listener on a new port. Returns ListenerStatus. */
   RESTART_LISTENER: 'listener:restart',
+  /** Renderer -> Main (invoke). Starts a recording session. Returns RecordingStatus. */
+  START_RECORDING: 'recording:start',
+  /** Renderer -> Main (invoke). Stops recording and opens save dialog. Returns RecordingStatus. */
+  STOP_RECORDING: 'recording:stop',
+  /** Main -> Renderer. Pushed when recording state changes (start/stop/hotkey). Payload: RecordingStatus. */
+  RECORDING_STATUS: 'recording:status',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

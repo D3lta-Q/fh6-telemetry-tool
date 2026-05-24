@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import type { AppSettings } from '@shared/telemetry';
 import { DEFAULT_SETTINGS } from '@shared/telemetry';
@@ -146,6 +146,19 @@ export function Settings({ open, onClose }: SettingsProps) {
               <ScaleSlider
                 value={settings.uiScale}
                 onChange={(v) => update({ uiScale: v })}
+              />
+            </Field>
+          </Section>
+
+          {/* Recording section */}
+          <Section title="Recording" tag="CAPTURE">
+            <Field
+              label="Record hotkey"
+              hint="Global hotkey to start/stop recording from anywhere, including in-game. Examples: F9, F10, Ctrl+Shift+R."
+            >
+              <HotkeyInput
+                value={settings.recordHotkey}
+                onChange={(v) => update({ recordHotkey: v })}
               />
             </Field>
           </Section>
@@ -375,6 +388,65 @@ function ScaleSlider({ value, onChange }: { value: number; onChange: (v: number)
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Key-capture input for Electron accelerator strings.
+ *
+ * Click/focus to enter capture mode, then press any key combo. Escape cancels.
+ * Modifier-only presses are ignored — the user must press a non-modifier key.
+ */
+function HotkeyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [capturing, setCapturing] = useState(false);
+
+  const toAccelerator = useCallback((e: React.KeyboardEvent<HTMLButtonElement>): string | null => {
+    const modless = ['Control', 'Shift', 'Alt', 'Meta', 'Super', 'Escape'];
+    if (modless.includes(e.key)) return null;
+
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+
+    // Map key names to Electron accelerator names.
+    const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    parts.push(key);
+    return parts.join('+');
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (!capturing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        setCapturing(false);
+        return;
+      }
+      const acc = toAccelerator(e);
+      if (acc) {
+        onChange(acc);
+        setCapturing(false);
+      }
+    },
+    [capturing, onChange, toAccelerator]
+  );
+
+  return (
+    <button
+      onMouseDown={() => setCapturing(true)}
+      onFocus={() => setCapturing(true)}
+      onBlur={() => setCapturing(false)}
+      onKeyDown={handleKeyDown}
+      className={`h-8 px-3 rounded border font-mono text-sm text-left transition-colors w-full focus:outline-none ${
+        capturing
+          ? 'border-border-accent bg-bg-elevated text-text'
+          : 'border-border-muted bg-bg-input text-text-muted hover:border-border hover:text-text'
+      }`}
+    >
+      {capturing ? 'Press a key…' : value}
+    </button>
   );
 }
 
