@@ -26,6 +26,7 @@ import { InputsWidget } from './widgets/InputsWidget';
  */
 export function Dashboard() {
   const panels = useSettingsStore((s) => s.settings.visiblePanels);
+  const uiScale = useSettingsStore((s) => s.settings.uiScale);
 
   // Row 1: engine + inputs. Special-case the proportions so engine stays wide.
   const row1 = [
@@ -48,71 +49,82 @@ export function Dashboard() {
   // If nothing is visible, show a hint.
   if (row1.length === 0 && row2.length === 0 && row3.length === 0) {
     return (
-      <main className="flex-1 min-h-0 overflow-hidden p-3 flex items-center justify-center">
+      <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
         <div className="text-center max-w-md">
           <p className="text-sm text-text-muted">No panels visible.</p>
           <p className="text-[11px] font-mono text-text-dim mt-2">
             Open the panel menu (top-left) and enable some panels.
           </p>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="flex-1 min-h-0 overflow-hidden p-3 flex flex-col gap-3">
-      {row1.length > 0 && (
-        <div
-          className="min-h-0 grid gap-3"
-          style={{
-            // Two-widget row preserves the 7/3 engine/inputs ratio; otherwise
-            // the lone widget fills the row.
-            gridTemplateColumns:
-              row1.length === 2
-                ? `minmax(0, ${row1[0]!.weight}fr) minmax(0, ${row1[1]!.weight}fr)`
-                : 'minmax(0, 1fr)',
-            flex: '10',
-          }}
-        >
-          {row1.map((w) => (
-            <div key={w.id} className="min-h-0">
-              {w.node}
+    <div className="flex-1 min-h-0 overflow-hidden">
+      <div
+        style={{
+          transform: `scale(${uiScale})`,
+          transformOrigin: 'top left',
+          width: `${(1 / uiScale) * 100}%`,
+          height: `${(1 / uiScale) * 100}%`,
+        }}
+      >
+        <main className="h-full overflow-hidden p-3 flex flex-col gap-3">
+          {row1.length > 0 && (
+            <div
+              className="min-h-0 grid gap-3"
+              style={{
+                // Two-widget row preserves the 7/3 engine/inputs ratio; otherwise
+                // the lone widget fills the row.
+                gridTemplateColumns:
+                  row1.length === 2
+                    ? `minmax(0, ${row1[0]!.weight}fr) minmax(0, ${row1[1]!.weight}fr)`
+                    : 'minmax(0, 1fr)',
+                flex: '10',
+              }}
+            >
+              {row1.map((w) => (
+                <div key={w.id} className="min-h-0">
+                  {w.node}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {row2.length > 0 && (
-        <div
-          className="min-h-0 grid gap-3"
-          style={{
-            gridTemplateColumns: `repeat(${row2.length}, minmax(0, 1fr))`,
-            flex: '8',
-          }}
-        >
-          {row2.map((w) => (
-            <div key={w.id} className="min-h-0">
-              {w.node}
+          {row2.length > 0 && (
+            <div
+              className="min-h-0 grid gap-3"
+              style={{
+                gridTemplateColumns: `repeat(${row2.length}, minmax(0, 1fr))`,
+                flex: '8',
+              }}
+            >
+              {row2.map((w) => (
+                <div key={w.id} className="min-h-0">
+                  {w.node}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {row3.length > 0 && (
-        <div
-          className="min-h-0 grid gap-3"
-          style={{
-            gridTemplateColumns: `repeat(${row3.length}, minmax(0, 1fr))`,
-            flex: '6',
-          }}
-        >
-          {row3.map((w) => (
-            <div key={w.id} className="min-h-0">
-              {w.node}
+          {row3.length > 0 && (
+            <div
+              className="min-h-0 grid gap-3"
+              style={{
+                gridTemplateColumns: `repeat(${row3.length}, minmax(0, 1fr))`,
+                flex: '6',
+              }}
+            >
+              {row3.map((w) => (
+                <div key={w.id} className="min-h-0">
+                  {w.node}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-    </main>
+          )}
+        </main>
+      </div>
+    </div>
   );
 }
