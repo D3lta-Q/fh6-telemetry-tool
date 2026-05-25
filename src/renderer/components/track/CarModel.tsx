@@ -27,7 +27,7 @@ export function CarModel({ playbackFrame }: { playbackFrame?: { x: number; y: nu
     // Forza's yaw=0 faces along the X axis; Three.js model forward is +Z.
     // Subtract π/2 to rotate the model so its +Z aligns with Forza's heading.
     group.rotation.order = 'YXZ';
-    group.rotation.y = -frame.yaw + Math.PI / 2;
+    group.rotation.y = frame.yaw + Math.PI / 2;
     group.rotation.x = frame.pitch;
     group.rotation.z = frame.roll;
   });
