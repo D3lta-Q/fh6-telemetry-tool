@@ -57,12 +57,15 @@ function CameraFit({ frames, trigger }: { frames: TrackFrame[]; trigger: number 
 }
 
 function CameraFollow({ enabled, frame }: { enabled: boolean; frame: TrackFrame | null }) {
-  const { controls } = useThree();
+  const { camera, controls } = useThree();
   useFrame(() => {
     if (!enabled || !frame) return;
     const oc = controls as any;
     if (!oc?.target) return;
-    oc.target.lerp(new THREE.Vector3(frame.x, frame.y, frame.z), 0.1);
+    const carPos = new THREE.Vector3(frame.x, frame.y, frame.z);
+    const delta = carPos.clone().sub(oc.target).multiplyScalar(0.1);
+    oc.target.add(delta);
+    camera.position.add(delta);
     oc.update();
   });
   return null;

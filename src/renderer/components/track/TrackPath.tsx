@@ -5,9 +5,9 @@ import type { TrackFrame, PathColorMetric } from '@shared/track';
 
 const MAX_POINTS = 200_000;
 
-function metricValue(f: TrackFrame, metric: PathColorMetric): number {
+function metricValue(f: TrackFrame, metric: PathColorMetric, maxSpeed: number): number {
   switch (metric) {
-    case 'speed':    return Math.min(f.speed / 80, 1);
+    case 'speed':    return Math.min(f.speed / maxSpeed, 1);
     case 'grip':     return 1 - Math.min(f.grip / 1.5, 1);
     case 'throttle': return f.throttle;
     case 'brake':    return f.brake;
@@ -62,6 +62,7 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
   const prevMetric = useRef(metric);
   const rumbleBuilt = useRef(0);
   const puddleBuilt = useRef(0);
+  const maxSpeedRef = useRef(1);
 
   // Re-colour when the metric selector changes.
   useEffect(() => {
@@ -75,6 +76,7 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
   useEffect(() => {
     if (frames.length < builtUpTo.current) {
       builtUpTo.current = 0;
+      maxSpeedRef.current = 1;
       mainGeo.setDrawRange(0, 0);
       rumbleBuilt.current = 0;
       rumbleGeo.setDrawRange(0, 0);
@@ -94,8 +96,26 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
   // ---- Main path update ---------------------------------------------------------
   useFrame(() => {
     const target = frames.length;
-    const begin = rebuildEveryFrame ? 0 : builtUpTo.current;
+    let begin = rebuildEveryFrame ? 0 : builtUpTo.current;
     if (begin >= target && !rebuildEveryFrame) return;
+
+    // Track max speed for dynamic color scaling.
+    if (begin === 0 || rebuildEveryFrame) {
+      let max = 1;
+      for (let i = 0; i < Math.min(target, MAX_POINTS); i++) {
+        if (frames[i].speed > max) max = frames[i].speed;
+      }
+      maxSpeedRef.current = max;
+    } else {
+      let max = maxSpeedRef.current;
+      for (let i = begin; i < Math.min(target, MAX_POINTS); i++) {
+        if (frames[i].speed > max) max = frames[i].speed;
+      }
+      if (max > maxSpeedRef.current) {
+        maxSpeedRef.current = max;
+        if (metric === 'speed') begin = 0;
+      }
+    }
 
     const posAttr = mainGeo.attributes['position'] as THREE.BufferAttribute;
     const colAttr = mainGeo.attributes['color'] as THREE.BufferAttribute;
@@ -108,7 +128,7 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
       posArr[i * 3]     = f.x;
       posArr[i * 3 + 1] = f.y + 0.1;
       posArr[i * 3 + 2] = f.z;
-      metricColor(metricValue(f, metric), c);
+      metricColor(metricValue(f, metric, maxSpeedRef.current), c);
       colArr[i * 3]     = c.r;
       colArr[i * 3 + 1] = c.g;
       colArr[i * 3 + 2] = c.b;
