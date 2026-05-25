@@ -29,7 +29,7 @@ export function CarModel({ playbackFrame }: { playbackFrame?: { x: number; y: nu
     group.rotation.order = 'YXZ';
     group.rotation.y = -frame.yaw + Math.PI;
     group.rotation.x = frame.pitch;
-    group.rotation.z = frame.roll;
+    group.rotation.z = -frame.roll;
   });
 
   return (
