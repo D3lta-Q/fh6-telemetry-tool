@@ -28,31 +28,49 @@ export function WheelWidget() {
       title="Wheel Rotation"
       tag="DRIVETRAIN"
       controls={
-        <IconButton
-          active={settings.showWheelGraph}
-          onClick={() => update({ showWheelGraph: !settings.showWheelGraph })}
-          title="Toggle graph"
-        >
-          <ChartIcon />
-        </IconButton>
+        <>
+          <IconButton
+            active={settings.showWheelVisual}
+            onClick={() => update({ showWheelVisual: !settings.showWheelVisual })}
+            title="Toggle visual"
+          >
+            <EyeIcon />
+          </IconButton>
+          <IconButton
+            active={settings.showWheelGraph}
+            onClick={() => update({ showWheelGraph: !settings.showWheelGraph })}
+            title="Toggle graph"
+          >
+            <ChartIcon />
+          </IconButton>
+        </>
       }
     >
-      <div className={settings.showWheelGraph ? 'flex-1 min-h-0 grid grid-rows-2 gap-2' : 'flex-1 min-h-0 flex flex-col'}>
-        <div className={settings.showWheelGraph ? 'min-h-0' : 'flex-1 min-h-0'}>
-          <WheelVisual />
-        </div>
-        {settings.showWheelGraph && (
-          <div className="min-h-0 flex flex-col">
-            <LiveLineChart
-              buffer={buffer}
-              windowSec={windowSec}
-              series={series}
-              height="auto"
-            />
+      {(() => {
+        const showV = settings.showWheelVisual;
+        const showG = settings.showWheelGraph;
+        const both = showV && showG;
+        return (
+          <div className={`flex-1 min-h-0 ${both ? 'grid grid-rows-2 gap-2' : 'flex flex-col'}`}>
+            {showV && <div className={both ? 'min-h-0' : 'flex-1 min-h-0'}><WheelVisual /></div>}
+            {showG && (
+              <div className={both ? 'min-h-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}>
+                <LiveLineChart buffer={buffer} windowSec={windowSec} series={series} height="auto" />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </Widget>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
   );
 }
 

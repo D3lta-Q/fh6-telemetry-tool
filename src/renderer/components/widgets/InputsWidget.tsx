@@ -52,32 +52,49 @@ export function InputsWidget() {
       title="Controls"
       tag="INPUT"
       controls={
-        <IconButton
-          active={settings.showInputsGraph}
-          onClick={() => update({ showInputsGraph: !settings.showInputsGraph })}
-          title="Toggle graph"
-        >
-          <ChartIcon />
-        </IconButton>
+        <>
+          <IconButton
+            active={settings.showInputsVisual}
+            onClick={() => update({ showInputsVisual: !settings.showInputsVisual })}
+            title="Toggle visual"
+          >
+            <EyeIcon />
+          </IconButton>
+          <IconButton
+            active={settings.showInputsGraph}
+            onClick={() => update({ showInputsGraph: !settings.showInputsGraph })}
+            title="Toggle graph"
+          >
+            <ChartIcon />
+          </IconButton>
+        </>
       }
     >
-      <div className={settings.showInputsGraph ? 'flex-1 min-h-0 grid grid-rows-2 gap-2' : 'flex-1 min-h-0'}>
-        <div className="min-h-0 flex">
-          <InputsVisual />
-        </div>
-        {settings.showInputsGraph && (
-          <div className="min-h-0 flex flex-col">
-            <LiveLineChart
-              buffer={buffer}
-              windowSec={windowSec}
-              series={series}
-              height="auto"
-              yRange={[-1, 1]}
-            />
+      {(() => {
+        const showV = settings.showInputsVisual;
+        const showG = settings.showInputsGraph;
+        const both = showV && showG;
+        return (
+          <div className={`flex-1 min-h-0 ${both ? 'grid grid-rows-2 gap-2' : 'flex flex-col'}`}>
+            {showV && <div className={both ? 'min-h-0 flex' : 'flex-1 min-h-0 flex'}><InputsVisual /></div>}
+            {showG && (
+              <div className={both ? 'min-h-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}>
+                <LiveLineChart buffer={buffer} windowSec={windowSec} series={series} height="auto" yRange={[-1, 1]} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </Widget>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
   );
 }
 

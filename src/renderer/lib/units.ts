@@ -28,9 +28,9 @@ export function wattsToHp(watts: number): number {
   return watts / 745.69987158227022;
 }
 
-/** Forza Horizon 6 gear field: 0 = neutral, 1..N = forward gears. */
+/** Forza Horizon 6 gear field: 0 = reverse, 1..N = forward gears. */
 export function formatGear(gear: number): string {
-  if (gear === 0) return 'N';
+  if (gear === 0) return 'R';
   return String(gear);
 }
 

@@ -28,32 +28,49 @@ export function SuspensionWidget() {
       title="Suspension"
       tag="CHASSIS"
       controls={
-        <IconButton
-          active={settings.showSuspensionGraph}
-          onClick={() => update({ showSuspensionGraph: !settings.showSuspensionGraph })}
-          title="Toggle graph"
-        >
-          <ChartIcon />
-        </IconButton>
+        <>
+          <IconButton
+            active={settings.showSuspensionVisual}
+            onClick={() => update({ showSuspensionVisual: !settings.showSuspensionVisual })}
+            title="Toggle visual"
+          >
+            <EyeIcon />
+          </IconButton>
+          <IconButton
+            active={settings.showSuspensionGraph}
+            onClick={() => update({ showSuspensionGraph: !settings.showSuspensionGraph })}
+            title="Toggle graph"
+          >
+            <ChartIcon />
+          </IconButton>
+        </>
       }
     >
-      <div className={settings.showSuspensionGraph ? 'flex-1 min-h-0 grid grid-rows-2 gap-2' : 'flex-1 min-h-0 flex flex-col'}>
-        <div className={settings.showSuspensionGraph ? 'min-h-0' : 'flex-1 min-h-0'}>
-          <SuspensionVisual />
-        </div>
-        {settings.showSuspensionGraph && (
-          <div className="min-h-0 flex flex-col">
-            <LiveLineChart
-              buffer={buffer}
-              windowSec={windowSec}
-              series={series}
-              height="auto"
-              yRange={[0, 1]}
-            />
+      {(() => {
+        const showV = settings.showSuspensionVisual;
+        const showG = settings.showSuspensionGraph;
+        const both = showV && showG;
+        return (
+          <div className={`flex-1 min-h-0 ${both ? 'grid grid-rows-2 gap-2' : 'flex flex-col'}`}>
+            {showV && <div className={both ? 'min-h-0' : 'flex-1 min-h-0'}><SuspensionVisual /></div>}
+            {showG && (
+              <div className={both ? 'min-h-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}>
+                <LiveLineChart buffer={buffer} windowSec={windowSec} series={series} height="auto" yRange={[0, 1]} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </Widget>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
   );
 }
 
