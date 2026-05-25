@@ -96,18 +96,33 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
   },
 
   stopTracking() {
-    set({ isTracking: false });
+    set({ isTracking: false, origin: null });
   },
 
   pushTelemetry(data) {
+    if (!data.isRaceOn) return;
+
     const state = get();
 
-    // Always update liveFrame so the car model is visible even when not recording.
-    const liveFrame: TrackFrame = {
+    // Resolve origin FIRST. When tracking, latch to the first packet's world
+    // position. When idle, self-reference so the car always sits at (0,0,0).
+    let origin = state.origin;
+    if (state.isTracking && origin === null) {
+      origin = { x: data.positionX, y: data.positionY, z: data.positionZ };
+    }
+
+    const refX = origin?.x ?? data.positionX;
+    const refY = origin?.y ?? data.positionY;
+    const refZ = origin?.z ?? data.positionZ;
+    const rx = data.positionX - refX;
+    const ry = data.positionY - refY;
+    const rz = data.positionZ - refZ;
+
+    const frame: TrackFrame = {
       t: data.receivedAt,
-      x: data.positionX - (state.origin?.x ?? data.positionX),
-      y: data.positionY - (state.origin?.y ?? data.positionY),
-      z: data.positionZ - (state.origin?.z ?? data.positionZ),
+      x: rx,
+      y: ry,
+      z: rz,
       yaw: data.yaw,
       pitch: data.pitch,
       roll: data.roll,
@@ -134,17 +149,9 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
     };
 
     if (!state.isTracking) {
-      set({ liveFrame });
+      set({ liveFrame: frame });
       return;
     }
-
-    // Latch origin on first recorded packet.
-    const origin = state.origin ?? { x: data.positionX, y: data.positionY, z: data.positionZ };
-
-    // Relative position.
-    const rx = data.positionX - origin.x;
-    const ry = data.positionY - origin.y;
-    const rz = data.positionZ - origin.z;
 
     // Distance gate — avoid cluttering the path when stationary.
     const dx = rx - state._lastX;
@@ -152,11 +159,9 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
     const dz = rz - state._lastZ;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (state.frames.length > 0 && dist < MIN_STEP_M) {
-      set({ liveFrame });
+      set({ origin, liveFrame: frame });
       return;
     }
-
-    const frame: TrackFrame = { ...liveFrame, x: rx, y: ry, z: rz };
 
     const frames = [...state.frames, frame];
     const frameIndex = frames.length - 1;
