@@ -21,7 +21,7 @@ export function RaceOverlay({ frame }: RaceOverlayProps) {
       <TimingRow label="LAST LAP" value={formatLapTime(frame.lastLap)} />
       <TimingRow label="CURRENT " value={formatLapTime(frame.currentLap)} accent />
       <div className="mt-1 border-t border-border-muted pt-1">
-        <TimingRow label="LAP     " value={String(frame.lapNumber || '—')} />
+        <TimingRow label="LAP     " value={frame.lapNumber >= 0 ? String(frame.lapNumber + 1) : '—'} />
         <TimingRow label="POS     " value={frame.racePos > 0 ? `P${frame.racePos}` : '—'} />
       </div>
     </div>

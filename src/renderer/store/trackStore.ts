@@ -67,7 +67,7 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
   frames: [],
   laps: [],
   positionChanges: [],
-  _prevLap: 0,
+  _prevLap: -1,
   _prevRacePos: 0,
   _lastX: 0,
   _lastY: 0,
@@ -87,7 +87,7 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
       frames: [],
       laps: [],
       positionChanges: [],
-      _prevLap: 0,
+      _prevLap: -1,
       _prevRacePos: 0,
       _lastX: 0,
       _lastY: 0,
@@ -168,11 +168,11 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
     const laps = [...state.laps];
     const positionChanges = [...state.positionChanges];
 
-    // Lap detection (race mode).
+    // Lap detection (race mode). Forza reports laps 0-indexed.
     let prevLap = state._prevLap;
     if (state.mode === 'race' && data.lapNumber !== prevLap) {
-      if (prevLap > 0) {
-        laps.push({ lapNumber: prevLap, startFrame: frameIndex, lapTime: data.lastLap });
+      if (prevLap >= 0) {
+        laps.push({ lapNumber: prevLap + 1, startFrame: frameIndex, lapTime: data.lastLap });
       }
       prevLap = data.lapNumber;
     }

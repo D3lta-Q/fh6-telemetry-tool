@@ -324,39 +324,105 @@ function PlaybackBar({ session, index, isPlaying, onChange, onTogglePlay }: Play
   const currentMs = (session.frames[index]?.t ?? session.startedAt) - session.startedAt;
   const totalMs = session.endedAt - session.startedAt;
 
+  const [showLaps, setShowLaps] = useState(true);
+  const [showPositions, setShowPositions] = useState(true);
+
+  const hasLaps = session.laps.length > 0;
+  const hasPositions = session.positionChanges.length > 0;
+
   return (
-    <div className="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-4 py-2.5 bg-bg-surface/90 backdrop-blur border-t border-border">
-      <button
-        onClick={onTogglePlay}
-        className="h-7 w-7 inline-flex items-center justify-center rounded border border-border-muted bg-bg-input text-text-muted hover:text-text hover:border-border transition-colors shrink-0"
-      >
-        {isPlaying ? (
-          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-            <rect x="0" y="0" width="3" height="12" /><rect x="7" y="0" width="3" height="12" />
-          </svg>
-        ) : (
-          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-            <polygon points="0,0 10,6 0,12" />
-          </svg>
+    <div className="absolute bottom-0 left-0 right-0 flex flex-col bg-bg-surface/90 backdrop-blur border-t border-border">
+      {/* Timeline markers row */}
+      {(hasLaps || hasPositions) && (
+        <div className="relative h-4 mx-[72px] mr-[160px]">
+          {showLaps && session.laps.map((lap, i) => (
+            <div
+              key={`lap-${i}`}
+              className="absolute top-0.5 w-px h-3 bg-[#ffd60a]"
+              style={{ left: `${(lap.startFrame / total) * 100}%` }}
+              title={`Lap ${lap.lapNumber}`}
+            />
+          ))}
+          {showPositions && session.positionChanges.map((pc, i) => {
+            const gained = pc.to < pc.from;
+            return (
+              <div
+                key={`pos-${i}`}
+                className="absolute top-0 flex flex-col items-center"
+                style={{ left: `${(pc.frameIndex / total) * 100}%` }}
+                title={`P${pc.from} → P${pc.to}`}
+              >
+                <span className={`text-[7px] font-mono leading-none ${gained ? 'text-[#a3ff12]' : 'text-[#ff3c1c]'}`}>
+                  {gained ? '▲' : '▼'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Controls row */}
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <button
+          onClick={onTogglePlay}
+          className="h-7 w-7 inline-flex items-center justify-center rounded border border-border-muted bg-bg-input text-text-muted hover:text-text hover:border-border transition-colors shrink-0"
+        >
+          {isPlaying ? (
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <rect x="0" y="0" width="3" height="12" /><rect x="7" y="0" width="3" height="12" />
+            </svg>
+          ) : (
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <polygon points="0,0 10,6 0,12" />
+            </svg>
+          )}
+        </button>
+        <span className="text-[10px] font-mono text-text-muted tabular-nums w-10 shrink-0">
+          {formatTime(currentMs)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={total}
+          value={index}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-bg-input accent-[#00d4ff]"
+        />
+        <span className="text-[10px] font-mono text-text-dim tabular-nums w-10 shrink-0 text-right">
+          {formatTime(totalMs)}
+        </span>
+        <span className="text-[9px] font-mono uppercase tracking-wider text-text-dim shrink-0">
+          {session.frames.length.toLocaleString()} pts
+        </span>
+
+        {/* Marker visibility toggles */}
+        {hasLaps && (
+          <button
+            onClick={() => setShowLaps((v) => !v)}
+            title="Toggle lap markers"
+            className={`h-5 px-1.5 rounded text-[8px] font-mono uppercase tracking-wider border transition-colors ${
+              showLaps
+                ? 'border-[#ffd60a]/50 bg-[#ffd60a]/15 text-[#ffd60a]'
+                : 'border-border-muted text-text-dim hover:text-text-muted'
+            }`}
+          >
+            Laps
+          </button>
         )}
-      </button>
-      <span className="text-[10px] font-mono text-text-muted tabular-nums w-10 shrink-0">
-        {formatTime(currentMs)}
-      </span>
-      <input
-        type="range"
-        min={0}
-        max={total}
-        value={index}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-bg-input accent-[#00d4ff]"
-      />
-      <span className="text-[10px] font-mono text-text-dim tabular-nums w-10 shrink-0 text-right">
-        {formatTime(totalMs)}
-      </span>
-      <span className="text-[9px] font-mono uppercase tracking-wider text-text-dim shrink-0">
-        {session.frames.length.toLocaleString()} pts
-      </span>
+        {hasPositions && (
+          <button
+            onClick={() => setShowPositions((v) => !v)}
+            title="Toggle position markers"
+            className={`h-5 px-1.5 rounded text-[8px] font-mono uppercase tracking-wider border transition-colors ${
+              showPositions
+                ? 'border-[#a3ff12]/50 bg-[#a3ff12]/15 text-[#a3ff12]'
+                : 'border-border-muted text-text-dim hover:text-text-muted'
+            }`}
+          >
+            Pos
+          </button>
+        )}
+      </div>
     </div>
   );
 }
