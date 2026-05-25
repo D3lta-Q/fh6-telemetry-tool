@@ -25,6 +25,10 @@ export const IPC = {
   SAVE_TRACK_SESSION: 'track:save',
   /** Renderer -> Main (invoke). Opens a .fzt file via dialog. Returns FztSession or null if cancelled. */
   OPEN_TRACK_SESSION: 'track:open',
+  /** Renderer -> Main (invoke). Open a child window for a specific tab. Payload: 'dashboard' | 'track'. */
+  POP_OUT_TAB: 'window:pop-out',
+  /** Main -> Renderer. Tells a popped-out window which tab it should show. Payload: string. */
+  WINDOW_TAB: 'window:tab',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

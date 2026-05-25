@@ -3,6 +3,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useTrackStore } from '../../store/trackStore';
+import { usePlaybackStore } from '../../store/playbackStore';
 import { CarModel } from './CarModel';
 import { TrackPath } from './TrackPath';
 import { Markers, LapMarker } from './Markers';
@@ -77,21 +78,21 @@ interface SceneProps {
   isTracking: boolean;
   isPlayback: boolean;
   session: FztSession | null;
-  playbackIndex: number;
+  frameIndex: number;
   metric: PathColorMetric;
   mode: TrackMode;
   fitTrigger: number;
   followCar: boolean;
 }
 
-function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode, fitTrigger, followCar }: SceneProps) {
+function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar }: SceneProps) {
   const frames = useTrackStore((s) => s.frames);
   const laps = useTrackStore((s) => s.laps);
   const positionChanges = useTrackStore((s) => s.positionChanges);
   const liveFrame = useTrackStore((s) => s.liveFrame);
 
   const allFrames = isPlayback && session ? session.frames : frames;
-  const currentFrame = isPlayback && session ? (session.frames[playbackIndex] ?? null) : liveFrame;
+  const currentFrame = isPlayback && session ? (session.frames[frameIndex] ?? null) : liveFrame;
 
   const commonLights = (
     <>
@@ -112,7 +113,7 @@ function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode, f
   );
 
   if (isPlayback && session) {
-    const pbFrames = session.frames.slice(0, playbackIndex + 1);
+    const pbFrames = session.frames.slice(0, frameIndex + 1);
     return (
       <>
         <CameraAutoFrame active />
@@ -124,7 +125,7 @@ function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode, f
         <CarModel playbackFrame={currentFrame} />
         {session.mode === 'race' && (
           <>
-            <Markers positionChanges={session.positionChanges.filter((pc) => pc.frameIndex <= playbackIndex)} />
+            <Markers positionChanges={session.positionChanges.filter((pc) => pc.frameIndex <= frameIndex)} />
             {session.laps.map((lap, i) => {
               const f = session.frames[lap.startFrame];
               if (!f) return null;
@@ -170,60 +171,18 @@ interface TrackViewerProps {
 }
 
 export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
-  const playbackSession = useTrackStore((s) => s.playbackSession);
-  const playbackIndex = useTrackStore((s) => s.playbackIndex);
-  const isPlaying = useTrackStore((s) => s.isPlaying);
-  const setPlaybackIndex = useTrackStore((s) => s.setPlaybackIndex);
-  const setPlaying = useTrackStore((s) => s.setPlaying);
+  const session = usePlaybackStore((s) => s.session);
+  const frameIndex = usePlaybackStore((s) => s.frameIndex);
   const frames = useTrackStore((s) => s.frames);
   const liveFrame = useTrackStore((s) => s.liveFrame);
 
-  const isPlayback = playbackSession !== null;
+  const isPlayback = session !== null && session.frames.length > 0;
   const raceOverlayFrame = isPlayback
-    ? (playbackSession?.frames[playbackIndex] ?? null)
+    ? (session?.frames[frameIndex] ?? null)
     : (mode === 'race' ? liveFrame : null);
 
   const [fitTrigger, setFitTrigger] = useState(0);
   const [followCar, setFollowCar] = useState(false);
-
-  // Real-time playback: advance to the frame matching elapsed wall-clock time.
-  // playbackIndex is intentionally excluded from deps — the anchor is set once
-  // when play starts; scrubbing while playing pauses first via the onChange handler.
-  useEffect(() => {
-    if (!isPlaying || !playbackSession) return;
-    if (playbackIndex >= playbackSession.frames.length - 1) {
-      setPlaying(false);
-      return;
-    }
-
-    const session = playbackSession;
-    const anchor = {
-      wallTime: performance.now(),
-      frameT: session.frames[playbackIndex]?.t ?? 0,
-      startIndex: playbackIndex,
-    };
-
-    let rafId: number;
-    const tick = () => {
-      const targetT = anchor.frameT + (performance.now() - anchor.wallTime);
-      let lo = anchor.startIndex, hi = session.frames.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if ((session.frames[mid]?.t ?? Infinity) <= targetT) lo = mid;
-        else hi = mid - 1;
-      }
-      if (lo >= session.frames.length - 1) {
-        setPlaybackIndex(session.frames.length - 1);
-        setPlaying(false);
-        return;
-      }
-      setPlaybackIndex(lo);
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, playbackSession, setPlaybackIndex, setPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative flex-1 min-h-0 bg-[#050508]">
@@ -238,8 +197,8 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
           <Scene
             isTracking={isTracking}
             isPlayback={isPlayback}
-            session={playbackSession}
-            playbackIndex={playbackIndex}
+            session={session}
+            frameIndex={frameIndex}
             metric={metric}
             mode={mode}
             fitTrigger={fitTrigger}
@@ -279,17 +238,6 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
       {/* Race overlay (absolute positioned over canvas) */}
       {raceOverlayFrame && <RaceOverlay frame={raceOverlayFrame} />}
 
-      {/* Playback scrubber */}
-      {isPlayback && playbackSession && (
-        <PlaybackBar
-          session={playbackSession}
-          index={playbackIndex}
-          isPlaying={isPlaying}
-          onChange={(i) => { setPlaybackIndex(i); if (isPlaying) setPlaying(false); }}
-          onTogglePlay={() => setPlaying(!isPlaying)}
-        />
-      )}
-
       {/* Empty state */}
       {!isTracking && !isPlayback && frames.length === 0 && !liveFrame && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -298,131 +246,6 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
           </span>
         </div>
       )}
-    </div>
-  );
-}
-
-// ---- Playback bar --------------------------------------------------------------
-
-function formatTime(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-interface PlaybackBarProps {
-  session: FztSession;
-  index: number;
-  isPlaying: boolean;
-  onChange: (i: number) => void;
-  onTogglePlay: () => void;
-}
-
-function PlaybackBar({ session, index, isPlaying, onChange, onTogglePlay }: PlaybackBarProps) {
-  const total = session.frames.length - 1;
-  const currentMs = (session.frames[index]?.t ?? session.startedAt) - session.startedAt;
-  const totalMs = session.endedAt - session.startedAt;
-
-  const [showLaps, setShowLaps] = useState(true);
-  const [showPositions, setShowPositions] = useState(true);
-
-  const hasLaps = session.laps.length > 0;
-  const hasPositions = session.positionChanges.length > 0;
-
-  return (
-    <div className="absolute bottom-0 left-0 right-0 flex flex-col bg-bg-surface/90 backdrop-blur border-t border-border">
-      {/* Timeline markers row */}
-      {(hasLaps || hasPositions) && (
-        <div className="relative h-4 mx-[72px] mr-[160px]">
-          {showLaps && session.laps.map((lap, i) => (
-            <div
-              key={`lap-${i}`}
-              className="absolute top-0.5 w-px h-3 bg-[#ffd60a]"
-              style={{ left: `${(lap.startFrame / total) * 100}%` }}
-              title={`Lap ${lap.lapNumber}`}
-            />
-          ))}
-          {showPositions && session.positionChanges.map((pc, i) => {
-            const gained = pc.to < pc.from;
-            return (
-              <div
-                key={`pos-${i}`}
-                className="absolute top-0 flex flex-col items-center"
-                style={{ left: `${(pc.frameIndex / total) * 100}%` }}
-                title={`P${pc.from} → P${pc.to}`}
-              >
-                <span className={`text-[7px] font-mono leading-none ${gained ? 'text-[#a3ff12]' : 'text-[#ff3c1c]'}`}>
-                  {gained ? '▲' : '▼'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Controls row */}
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        <button
-          onClick={onTogglePlay}
-          className="h-7 w-7 inline-flex items-center justify-center rounded border border-border-muted bg-bg-input text-text-muted hover:text-text hover:border-border transition-colors shrink-0"
-        >
-          {isPlaying ? (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-              <rect x="0" y="0" width="3" height="12" /><rect x="7" y="0" width="3" height="12" />
-            </svg>
-          ) : (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-              <polygon points="0,0 10,6 0,12" />
-            </svg>
-          )}
-        </button>
-        <span className="text-[10px] font-mono text-text-muted tabular-nums w-10 shrink-0">
-          {formatTime(currentMs)}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={total}
-          value={index}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-bg-input accent-[#00d4ff]"
-        />
-        <span className="text-[10px] font-mono text-text-dim tabular-nums w-10 shrink-0 text-right">
-          {formatTime(totalMs)}
-        </span>
-        <span className="text-[9px] font-mono uppercase tracking-wider text-text-dim shrink-0">
-          {session.frames.length.toLocaleString()} pts
-        </span>
-
-        {/* Marker visibility toggles */}
-        {hasLaps && (
-          <button
-            onClick={() => setShowLaps((v) => !v)}
-            title="Toggle lap markers"
-            className={`h-5 px-1.5 rounded text-[8px] font-mono uppercase tracking-wider border transition-colors ${
-              showLaps
-                ? 'border-[#ffd60a]/50 bg-[#ffd60a]/15 text-[#ffd60a]'
-                : 'border-border-muted text-text-dim hover:text-text-muted'
-            }`}
-          >
-            Laps
-          </button>
-        )}
-        {hasPositions && (
-          <button
-            onClick={() => setShowPositions((v) => !v)}
-            title="Toggle position markers"
-            className={`h-5 px-1.5 rounded text-[8px] font-mono uppercase tracking-wider border transition-colors ${
-              showPositions
-                ? 'border-[#a3ff12]/50 bg-[#a3ff12]/15 text-[#a3ff12]'
-                : 'border-border-muted text-text-dim hover:text-text-muted'
-            }`}
-          >
-            Pos
-          </button>
-        )}
-      </div>
     </div>
   );
 }

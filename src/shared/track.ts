@@ -65,18 +65,40 @@ export interface PositionChange {
   to: number;
 }
 
-/** Complete recorded session saved to a .fzt file. */
-export interface FztSession {
+/** Complete recorded session saved to a .fzt file (v1 — track-only, legacy). */
+export interface FztSessionV1 {
   version: 1;
   mode: TrackMode;
   startedAt: number;
   endedAt: number;
-  /** World-space origin captured at recording start (for coordinate display). */
   origin: { x: number; y: number; z: number };
   frames: TrackFrame[];
   laps: LapInfo[];
   positionChanges: PositionChange[];
 }
+
+/**
+ * Unified recording session (v2) — combines full telemetry packets with
+ * track path data so a single .fzt file can be replayed in both the
+ * Dashboard and the 3D Track viewer.
+ */
+export interface FztSession {
+  version: 2;
+  mode: TrackMode;
+  startedAt: number;
+  endedAt: number;
+  /** World-space origin captured at recording start (for coordinate display). */
+  origin: { x: number; y: number; z: number };
+  /** Subsampled track frames for the 3D path. */
+  frames: TrackFrame[];
+  laps: LapInfo[];
+  positionChanges: PositionChange[];
+  /** Full telemetry packets for dashboard replay. */
+  packets: import('./telemetry').TelemetryData[];
+}
+
+/** Accepts either version for backwards compatibility when loading files. */
+export type FztSessionAny = FztSessionV1 | FztSession;
 
 /** Which telemetry field colours the path line. */
 export type PathColorMetric = 'speed' | 'grip' | 'throttle' | 'brake';

@@ -1,5 +1,5 @@
-import { useTrackStore } from '../../store/trackStore';
-import type { TrackMode, PathColorMetric, FztSession } from '@shared/track';
+import { usePlaybackStore } from '../../store/playbackStore';
+import type { TrackMode, PathColorMetric } from '@shared/track';
 import { PATH_COLOR_METRIC_LABELS } from '@shared/track';
 
 interface TrackControlsProps {
@@ -19,8 +19,8 @@ export function TrackControls({
   onSetMode, onSetMetric,
   onStart, onStop, onOpen, onClosePlayback,
 }: TrackControlsProps) {
-  const playbackSession = useTrackStore((s) => s.playbackSession);
-  const isPlayback = playbackSession !== null;
+  const playbackSession = usePlaybackStore((s) => s.session);
+  const isPlayback = playbackSession !== null && playbackSession.frames.length > 0;
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-bg-surface shrink-0 flex-wrap">

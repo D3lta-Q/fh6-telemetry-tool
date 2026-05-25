@@ -17,10 +17,13 @@ export interface ForzaApi {
   getSettings: () => Promise<AppSettings>;
   setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
   restartListener: (port: number) => Promise<ListenerStatus | null>;
-  startRecording: () => Promise<RecordingStatus>;
+  startRecording: (mode?: string) => Promise<RecordingStatus>;
   stopRecording: () => Promise<RecordingStatus>;
   saveTrackSession: (session: FztSession) => Promise<'saved' | 'cancelled'>;
   openTrackSession: () => Promise<FztSession | null>;
+  popOutTab: (tab: string) => Promise<void>;
+  /** Get the tab this window should show (for popped-out windows). */
+  getWindowTab: () => string | null;
 }
 
 const api: ForzaApi = {
@@ -43,10 +46,16 @@ const api: ForzaApi = {
   getSettings: () => ipcRenderer.invoke(IPC.GET_SETTINGS),
   setSettings: (patch) => ipcRenderer.invoke(IPC.SET_SETTINGS, patch),
   restartListener: (port) => ipcRenderer.invoke(IPC.RESTART_LISTENER, port),
-  startRecording: () => ipcRenderer.invoke(IPC.START_RECORDING),
+  startRecording: (mode) => ipcRenderer.invoke(IPC.START_RECORDING, mode),
   stopRecording: () => ipcRenderer.invoke(IPC.STOP_RECORDING),
   saveTrackSession: (session) => ipcRenderer.invoke(IPC.SAVE_TRACK_SESSION, session),
   openTrackSession: () => ipcRenderer.invoke(IPC.OPEN_TRACK_SESSION),
+  popOutTab: (tab) => ipcRenderer.invoke(IPC.POP_OUT_TAB, tab),
+  getWindowTab() {
+    // In Electron preload, `location` is available via the global scope
+    const params = new URLSearchParams((globalThis as any).location?.search ?? '');
+    return params.get('tab');
+  },
 };
 
 contextBridge.exposeInMainWorld('forza', api);

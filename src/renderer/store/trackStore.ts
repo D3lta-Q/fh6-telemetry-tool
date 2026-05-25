@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { TelemetryData } from '@shared/telemetry';
 import type {
-  FztSession,
   LapInfo,
   PathColorMetric,
   PositionChange,
@@ -31,7 +30,6 @@ interface TrackStoreState {
   laps: LapInfo[];
   positionChanges: PositionChange[];
 
-  // Private tracking state (not rendered, but needed for lap/position detection)
   _prevLap: number;
   _prevRacePos: number;
   _lastX: number;
@@ -41,11 +39,6 @@ interface TrackStoreState {
   // --- Live car position (always updated, independent of recording) ---
   liveFrame: TrackFrame | null;
 
-  // --- Playback ---
-  playbackSession: FztSession | null;
-  playbackIndex: number;
-  isPlaying: boolean;
-
   // --- UI state ---
   colorMetric: PathColorMetric;
 
@@ -53,9 +46,6 @@ interface TrackStoreState {
   startTracking: (mode: TrackMode) => void;
   stopTracking: () => void;
   pushTelemetry: (data: TelemetryData) => void;
-  setPlaybackSession: (session: FztSession | null) => void;
-  setPlaybackIndex: (index: number) => void;
-  setPlaying: (playing: boolean) => void;
   setColorMetric: (metric: PathColorMetric) => void;
 }
 
@@ -73,9 +63,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
   _lastY: 0,
   _lastZ: 0,
   liveFrame: null,
-  playbackSession: null,
-  playbackIndex: 0,
-  isPlaying: false,
   colorMetric: 'speed',
 
   startTracking(mode) {
@@ -104,8 +91,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
 
     const state = get();
 
-    // Resolve origin FIRST. When tracking, latch to the first packet's world
-    // position. When idle, self-reference so the car always sits at (0,0,0).
     let origin = state.origin;
     if (state.isTracking && origin === null) {
       origin = { x: data.positionX, y: data.positionY, z: data.positionZ };
@@ -153,7 +138,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
       return;
     }
 
-    // Distance gate — avoid cluttering the path when stationary.
     const dx = rx - state._lastX;
     const dy = ry - state._lastY;
     const dz = rz - state._lastZ;
@@ -168,7 +152,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
     const laps = [...state.laps];
     const positionChanges = [...state.positionChanges];
 
-    // Lap detection (race mode). Forza reports laps 0-indexed.
     let prevLap = state._prevLap;
     if (state.mode === 'race' && data.lapNumber !== prevLap) {
       if (prevLap >= 0) {
@@ -177,7 +160,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
       prevLap = data.lapNumber;
     }
 
-    // Race position change detection (race mode).
     let prevRacePos = state._prevRacePos;
     if (
       state.mode === 'race' &&
@@ -201,18 +183,6 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
       _lastY: ry,
       _lastZ: rz,
     });
-  },
-
-  setPlaybackSession(session) {
-    set({ playbackSession: session, playbackIndex: 0, isPlaying: false });
-  },
-
-  setPlaybackIndex(index) {
-    set({ playbackIndex: index });
-  },
-
-  setPlaying(playing) {
-    set({ isPlaying: playing });
   },
 
   setColorMetric(metric) {
