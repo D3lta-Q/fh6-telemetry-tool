@@ -27,7 +27,7 @@ interface TrackPathProps {
 }
 
 export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPathProps) {
-  // ---- Main coloured path -------------------------------------------------------
+  // ---- Geometry + material setup (created once) ---------------------------------
   const mainGeo = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
@@ -35,13 +35,23 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
     geo.setDrawRange(0, 0);
     return geo;
   }, []);
-
   const mainMat = useMemo(() => new THREE.LineBasicMaterial({ vertexColors: true }), []);
   const mainLine = useMemo(() => new THREE.Line(mainGeo, mainMat), [mainGeo, mainMat]);
 
+  const rumbleGeo = useMemo(() => makeOverlayGeo(), []);
+  const puddleGeo = useMemo(() => makeOverlayGeo(), []);
+  const rumbleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#ffd60a' }), []);
+  const puddleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#00d4ff' }), []);
+  const rumbleLine = useMemo(() => new THREE.LineSegments(rumbleGeo, rumbleMat), [rumbleGeo, rumbleMat]);
+  const puddleLine = useMemo(() => new THREE.LineSegments(puddleGeo, puddleMat), [puddleGeo, puddleMat]);
+
+  // ---- Incremental-build refs ---------------------------------------------------
   const builtUpTo = useRef(0);
   const prevMetric = useRef(metric);
+  const rumbleBuilt = useRef(0);
+  const puddleBuilt = useRef(0);
 
+  // Re-colour when the metric selector changes.
   useEffect(() => {
     if (prevMetric.current !== metric) {
       builtUpTo.current = 0;
@@ -49,10 +59,27 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
     }
   }, [metric]);
 
+  // Reset all draw ranges when frames are cleared (new recording started).
   useEffect(() => {
-    if (rebuildEveryFrame) builtUpTo.current = 0;
+    if (frames.length < builtUpTo.current) {
+      builtUpTo.current = 0;
+      mainGeo.setDrawRange(0, 0);
+      rumbleBuilt.current = 0;
+      rumbleGeo.setDrawRange(0, 0);
+      puddleBuilt.current = 0;
+      puddleGeo.setDrawRange(0, 0);
+    }
+  }, [frames.length, mainGeo, rumbleGeo, puddleGeo]);
+
+  useEffect(() => {
+    if (rebuildEveryFrame) {
+      builtUpTo.current = 0;
+      rumbleBuilt.current = 0;
+      puddleBuilt.current = 0;
+    }
   });
 
+  // ---- Main path update ---------------------------------------------------------
   useFrame(() => {
     const target = frames.length;
     const begin = rebuildEveryFrame ? 0 : builtUpTo.current;
@@ -80,23 +107,7 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
     builtUpTo.current = target;
   });
 
-  // ---- Overlay lines (rumble = yellow, puddle = blue) ---------------------------
-  const rumbleGeo = useMemo(() => makeOverlayGeo(), []);
-  const puddleGeo = useMemo(() => makeOverlayGeo(), []);
-  const rumbleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#ffd60a' }), []);
-  const puddleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#00d4ff' }), []);
-  const rumbleLine = useMemo(() => new THREE.LineSegments(rumbleGeo, rumbleMat), [rumbleGeo, rumbleMat]);
-  const puddleLine = useMemo(() => new THREE.LineSegments(puddleGeo, puddleMat), [puddleGeo, puddleMat]);
-
-  const rumbleBuilt = useRef(0);
-  const puddleBuilt = useRef(0);
-
-  useEffect(() => {
-    if (rebuildEveryFrame) {
-      rumbleBuilt.current = 0;
-      puddleBuilt.current = 0;
-    }
-  });
+  // ---- Overlay update -----------------------------------------------------------
 
   useFrame(() => {
     updateOverlay(rumbleGeo, rumbleBuilt, frames, frames.length, 'rumble', rebuildEveryFrame);

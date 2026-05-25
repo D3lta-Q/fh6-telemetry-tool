@@ -49,6 +49,20 @@ export function CarModel({ playbackFrame }: { playbackFrame?: { x: number; y: nu
         <boxGeometry args={[1.6, 0.55, 0.08]} />
         <meshStandardMaterial color="#1a2030" roughness={0.1} metalness={0.1} opacity={0.7} transparent />
       </mesh>
+      {/* Headlights (front = +Z) — bright white */}
+      {([-0.7, 0.7] as number[]).map((x, i) => (
+        <mesh key={`hl-${i}`} position={[x, 0.35, 2.26]}>
+          <boxGeometry args={[0.4, 0.18, 0.05]} />
+          <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1.5} />
+        </mesh>
+      ))}
+      {/* Taillights (rear = -Z) — red */}
+      {([-0.7, 0.7] as number[]).map((x, i) => (
+        <mesh key={`tl-${i}`} position={[x, 0.35, -2.26]}>
+          <boxGeometry args={[0.4, 0.18, 0.05]} />
+          <meshStandardMaterial color="#ff2020" emissive="#ff2020" emissiveIntensity={1.2} />
+        </mesh>
+      ))}
       {/* Wheels — FL, FR, RL, RR */}
       {([[-1.05, 0, 1.5], [1.05, 0, 1.5], [-1.05, 0, -1.5], [1.05, 0, -1.5]] as [number, number, number][]).map(([wx, wy, wz], i) => (
         <mesh key={i} position={[wx, wy, wz]} rotation={[0, 0, Math.PI / 2]}>
