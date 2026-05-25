@@ -34,6 +34,14 @@ export function TrackControls({
             {' · '}
             {playbackSession.frames.length.toLocaleString()} frames
           </span>
+
+          <div className="w-px h-4 bg-border-muted" />
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim">COLOR</span>
+            <MetricPicker value={metric} onChange={onSetMetric} />
+          </div>
+
           <div className="flex-1" />
           <button
             onClick={onClosePlayback}

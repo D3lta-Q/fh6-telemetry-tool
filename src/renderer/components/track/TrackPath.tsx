@@ -36,14 +36,26 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
     return geo;
   }, []);
   const mainMat = useMemo(() => new THREE.LineBasicMaterial({ vertexColors: true }), []);
-  const mainLine = useMemo(() => new THREE.Line(mainGeo, mainMat), [mainGeo, mainMat]);
+  const mainLine = useMemo(() => {
+    const l = new THREE.Line(mainGeo, mainMat);
+    l.frustumCulled = false;
+    return l;
+  }, [mainGeo, mainMat]);
 
   const rumbleGeo = useMemo(() => makeOverlayGeo(), []);
   const puddleGeo = useMemo(() => makeOverlayGeo(), []);
   const rumbleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#ffd60a' }), []);
   const puddleMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#00d4ff' }), []);
-  const rumbleLine = useMemo(() => new THREE.LineSegments(rumbleGeo, rumbleMat), [rumbleGeo, rumbleMat]);
-  const puddleLine = useMemo(() => new THREE.LineSegments(puddleGeo, puddleMat), [puddleGeo, puddleMat]);
+  const rumbleLine = useMemo(() => {
+    const l = new THREE.LineSegments(rumbleGeo, rumbleMat);
+    l.frustumCulled = false;
+    return l;
+  }, [rumbleGeo, rumbleMat]);
+  const puddleLine = useMemo(() => {
+    const l = new THREE.LineSegments(puddleGeo, puddleMat);
+    l.frustumCulled = false;
+    return l;
+  }, [puddleGeo, puddleMat]);
 
   // ---- Incremental-build refs ---------------------------------------------------
   const builtUpTo = useRef(0);

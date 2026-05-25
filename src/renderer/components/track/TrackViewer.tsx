@@ -1,15 +1,15 @@
-import { Suspense, useRef, useEffect } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment } from '@react-three/drei';
+import { Suspense, useRef, useEffect, useState } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useTrackStore } from '../../store/trackStore';
 import { CarModel } from './CarModel';
 import { TrackPath } from './TrackPath';
 import { Markers, LapMarker } from './Markers';
 import { RaceOverlay } from './RaceOverlay';
-import type { TrackMode, PathColorMetric, FztSession } from '@shared/track';
+import type { TrackMode, PathColorMetric, FztSession, TrackFrame } from '@shared/track';
 
-// ---- Camera auto-follow helper -------------------------------------------------
+// ---- Camera helpers ------------------------------------------------------------
 
 function CameraAutoFrame({ active }: { active: boolean }) {
   const { camera } = useThree();
@@ -25,6 +25,49 @@ function CameraAutoFrame({ active }: { active: boolean }) {
   return null;
 }
 
+function CameraFit({ frames, trigger }: { frames: TrackFrame[]; trigger: number }) {
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
+  const { camera, controls } = useThree();
+
+  useEffect(() => {
+    if (trigger === 0) return;
+    const fs = framesRef.current;
+    if (fs.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, sumY = 0;
+    for (const f of fs) {
+      if (f.x < minX) minX = f.x; if (f.x > maxX) maxX = f.x;
+      if (f.z < minZ) minZ = f.z; if (f.z > maxZ) maxZ = f.z;
+      sumY += f.y;
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = sumY / fs.length;
+    const cz = (minZ + maxZ) / 2;
+    const spread = Math.max(maxX - minX, maxZ - minZ, 20);
+    const dist = spread * 0.75;
+
+    camera.position.set(cx, cy + dist * 0.9, cz + dist * 0.5);
+    camera.lookAt(cx, cy, cz);
+    const oc = controls as any;
+    if (oc?.target) { oc.target.set(cx, cy, cz); oc.update(); }
+  }, [trigger]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
+function CameraFollow({ enabled, frame }: { enabled: boolean; frame: TrackFrame | null }) {
+  const { controls } = useThree();
+  useFrame(() => {
+    if (!enabled || !frame) return;
+    const oc = controls as any;
+    if (!oc?.target) return;
+    oc.target.lerp(new THREE.Vector3(frame.x, frame.y, frame.z), 0.1);
+    oc.update();
+  });
+  return null;
+}
+
 // ---- Scene contents ------------------------------------------------------------
 
 interface SceneProps {
@@ -34,31 +77,46 @@ interface SceneProps {
   playbackIndex: number;
   metric: PathColorMetric;
   mode: TrackMode;
+  fitTrigger: number;
+  followCar: boolean;
 }
 
-function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode }: SceneProps) {
+function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode, fitTrigger, followCar }: SceneProps) {
   const frames = useTrackStore((s) => s.frames);
   const laps = useTrackStore((s) => s.laps);
   const positionChanges = useTrackStore((s) => s.positionChanges);
   const liveFrame = useTrackStore((s) => s.liveFrame);
 
+  const allFrames = isPlayback && session ? session.frames : frames;
+  const currentFrame = isPlayback && session ? (session.frames[playbackIndex] ?? null) : liveFrame;
+
+  const commonLights = (
+    <>
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[50, 100, 50]} intensity={1.2} castShadow />
+    </>
+  );
+  const grid = (
+    <Grid
+      args={[2000, 2000]}
+      cellSize={10}
+      cellColor="#1a1a2e"
+      sectionSize={100}
+      sectionColor="#2a2a4e"
+      fadeDistance={800}
+      position={[0, -0.05, 0]}
+    />
+  );
+
   if (isPlayback && session) {
     const pbFrames = session.frames.slice(0, playbackIndex + 1);
-    const currentFrame = session.frames[playbackIndex] ?? null;
     return (
       <>
         <CameraAutoFrame active />
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[50, 100, 50]} intensity={1.2} castShadow />
-        <Grid
-          args={[2000, 2000]}
-          cellSize={10}
-          cellColor="#1a1a2e"
-          sectionSize={100}
-          sectionColor="#2a2a4e"
-          fadeDistance={800}
-          position={[0, -0.05, 0]}
-        />
+        <CameraFit frames={allFrames} trigger={fitTrigger} />
+        <CameraFollow enabled={followCar} frame={currentFrame} />
+        {commonLights}
+        {grid}
         <TrackPath frames={pbFrames} metric={metric} rebuildEveryFrame />
         <CarModel playbackFrame={currentFrame} />
         {session.mode === 'race' && (
@@ -78,17 +136,10 @@ function Scene({ isTracking, isPlayback, session, playbackIndex, metric, mode }:
   return (
     <>
       <CameraAutoFrame active={isTracking && frames.length === 1} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[50, 100, 50]} intensity={1.2} castShadow />
-      <Grid
-        args={[2000, 2000]}
-        cellSize={10}
-        cellColor="#1a1a2e"
-        sectionSize={100}
-        sectionColor="#2a2a4e"
-        fadeDistance={800}
-        position={[0, -0.05, 0]}
-      />
+      <CameraFit frames={allFrames} trigger={fitTrigger} />
+      <CameraFollow enabled={followCar} frame={currentFrame} />
+      {commonLights}
+      {grid}
       {(isTracking || frames.length > 0) && (
         <TrackPath frames={frames} metric={metric} />
       )}
@@ -129,18 +180,47 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
     ? (playbackSession?.frames[playbackIndex] ?? null)
     : (mode === 'race' ? liveFrame : null);
 
-  // Playback auto-advance.
+  const [fitTrigger, setFitTrigger] = useState(0);
+  const [followCar, setFollowCar] = useState(false);
+
+  // Real-time playback: advance to the frame matching elapsed wall-clock time.
+  // playbackIndex is intentionally excluded from deps — the anchor is set once
+  // when play starts; scrubbing while playing pauses first via the onChange handler.
   useEffect(() => {
     if (!isPlaying || !playbackSession) return;
     if (playbackIndex >= playbackSession.frames.length - 1) {
       setPlaying(false);
       return;
     }
-    const id = requestAnimationFrame(() => {
-      setPlaybackIndex(Math.min(playbackIndex + 2, playbackSession.frames.length - 1));
-    });
-    return () => cancelAnimationFrame(id);
-  }, [isPlaying, playbackIndex, playbackSession, setPlaybackIndex, setPlaying]);
+
+    const session = playbackSession;
+    const anchor = {
+      wallTime: performance.now(),
+      frameT: session.frames[playbackIndex]?.t ?? 0,
+      startIndex: playbackIndex,
+    };
+
+    let rafId: number;
+    const tick = () => {
+      const targetT = anchor.frameT + (performance.now() - anchor.wallTime);
+      let lo = anchor.startIndex, hi = session.frames.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((session.frames[mid]?.t ?? Infinity) <= targetT) lo = mid;
+        else hi = mid - 1;
+      }
+      if (lo >= session.frames.length - 1) {
+        setPlaybackIndex(session.frames.length - 1);
+        setPlaying(false);
+        return;
+      }
+      setPlaybackIndex(lo);
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, playbackSession, setPlaybackIndex, setPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative flex-1 min-h-0 bg-[#050508]">
@@ -159,10 +239,39 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
             playbackIndex={playbackIndex}
             metric={metric}
             mode={mode}
+            fitTrigger={fitTrigger}
+            followCar={followCar}
           />
           <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         </Suspense>
       </Canvas>
+
+      {/* Fit / Follow camera buttons */}
+      <div className="absolute top-3 right-3 flex flex-col gap-1.5">
+        <button
+          onClick={() => { setFollowCar(false); setFitTrigger((n) => n + 1); }}
+          title="Fit path in view"
+          className="h-7 w-7 inline-flex items-center justify-center rounded border border-border-muted bg-bg-surface/80 backdrop-blur text-text-muted hover:text-text hover:border-border transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" />
+          </svg>
+        </button>
+        <button
+          onClick={() => setFollowCar((v) => !v)}
+          title={followCar ? 'Stop following car' : 'Follow car'}
+          className={`h-7 w-7 inline-flex items-center justify-center rounded border transition-colors ${
+            followCar
+              ? 'border-[#00d4ff]/60 bg-[#00d4ff]/15 text-[#00d4ff]'
+              : 'border-border-muted bg-bg-surface/80 backdrop-blur text-text-muted hover:text-text hover:border-border'
+          }`}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <circle cx="7" cy="7" r="2.5" />
+            <path d="M7 1v2.5M7 10.5V13M1 7h2.5M10.5 7H13" />
+          </svg>
+        </button>
+      </div>
 
       {/* Race overlay (absolute positioned over canvas) */}
       {raceOverlayFrame && <RaceOverlay frame={raceOverlayFrame} />}
@@ -173,7 +282,7 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
           session={playbackSession}
           index={playbackIndex}
           isPlaying={isPlaying}
-          onChange={setPlaybackIndex}
+          onChange={(i) => { setPlaybackIndex(i); if (isPlaying) setPlaying(false); }}
           onTogglePlay={() => setPlaying(!isPlaying)}
         />
       )}
