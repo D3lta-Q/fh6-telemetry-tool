@@ -51,6 +51,7 @@ export function InputsWidget() {
     <Widget
       title="Controls"
       tag="INPUT"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <>
           <IconButton

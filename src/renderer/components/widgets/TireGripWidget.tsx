@@ -35,6 +35,7 @@ export function TireGripWidget() {
     <Widget
       title="Tire Grip"
       tag="TRACTION"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <>
           <IconButton

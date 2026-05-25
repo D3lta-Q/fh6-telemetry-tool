@@ -27,6 +27,7 @@ export function WheelWidget() {
     <Widget
       title="Wheel Rotation"
       tag="DRIVETRAIN"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <>
           <IconButton

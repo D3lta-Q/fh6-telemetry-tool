@@ -27,6 +27,7 @@ export function SuspensionWidget() {
     <Widget
       title="Suspension"
       tag="CHASSIS"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <>
           <IconButton

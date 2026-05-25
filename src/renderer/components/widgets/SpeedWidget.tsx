@@ -47,6 +47,7 @@ export function SpeedWidget() {
     <Widget
       title="Speed"
       tag="VEHICLE"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <SegmentedControl
           value={unit}

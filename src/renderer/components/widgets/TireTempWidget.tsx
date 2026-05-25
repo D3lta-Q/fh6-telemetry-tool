@@ -27,6 +27,7 @@ export function TireTempWidget() {
     <Widget
       title="Tire Temperature"
       tag="THERMAL"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
         <>
           <IconButton
