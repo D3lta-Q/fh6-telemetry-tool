@@ -116,7 +116,7 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
     const refZ = origin?.z ?? data.positionZ;
     const rx = data.positionX - refX;
     const ry = data.positionY - refY;
-    const rz = data.positionZ - refZ;
+    const rz = -(data.positionZ - refZ);
 
     const frame: TrackFrame = {
       t: data.receivedAt,
