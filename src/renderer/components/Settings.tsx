@@ -240,6 +240,36 @@ export function Settings({ open, onClose }: SettingsProps) {
                     max={65535}
                   />
                 </Field>
+                <Field label="Feedback sources" hint="Sources are summed; total is clamped to full intensity.">
+                  <div className="flex flex-col gap-3">
+                    {(([
+                      { key: 'slip',    label: 'Tyre Slip',      hint: 'L2: front lock · R2: wheelspin' },
+                      { key: 'surface', label: 'Surface Rumble', hint: 'Road texture and terrain' },
+                      { key: 'rpm',     label: 'Engine RPM',     hint: 'Workload vs redline' },
+                      { key: 'speed',   label: 'Vehicle Speed',  hint: 'Full at ~290 km/h' },
+                    ]) as Array<{ key: keyof AppSettings['dualsenseSources']; label: string; hint: string }>).map(({ key, label, hint }) => (
+                      <SourceRow
+                        key={key}
+                        label={label}
+                        hint={hint}
+                        enabled={settings.dualsenseSources[key].enabled}
+                        strength={settings.dualsenseSources[key].strength}
+                        onToggle={() => update({
+                          dualsenseSources: {
+                            ...settings.dualsenseSources,
+                            [key]: { ...settings.dualsenseSources[key], enabled: !settings.dualsenseSources[key].enabled },
+                          },
+                        })}
+                        onStrength={(v) => update({
+                          dualsenseSources: {
+                            ...settings.dualsenseSources,
+                            [key]: { ...settings.dualsenseSources[key], strength: v },
+                          },
+                        })}
+                      />
+                    ))}
+                  </div>
+                </Field>
                 <Field label="Brake (L2) strength" hint="Resistance intensity 0–8.">
                   <SliderNumber
                     value={settings.dualsenseBrakeStrength}
@@ -503,6 +533,56 @@ function HotkeyInput({ value, onChange }: { value: string; onChange: (v: string)
     >
       {capturing ? 'Press a key…' : value}
     </button>
+  );
+}
+
+function SourceRow({
+  label,
+  hint,
+  enabled,
+  strength,
+  onToggle,
+  onStrength,
+}: {
+  label: string;
+  hint: string;
+  enabled: boolean;
+  strength: number;
+  onToggle: () => void;
+  onStrength: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggle}
+          className={`relative inline-flex h-4 w-7 shrink-0 rounded-full border transition-colors ${
+            enabled ? 'bg-accent-lime/20 border-accent-lime/40' : 'bg-bg-input border-border-muted'
+          }`}
+        >
+          <span className={`absolute top-[3px] h-2.5 w-2.5 rounded-full transition-all ${
+            enabled ? 'left-[13px] bg-accent-lime' : 'left-0.5 bg-text-dim'
+          }`} />
+        </button>
+        <span className="flex-1 text-[11px] text-text-muted">{label}</span>
+        <span className="text-[10px] font-mono text-text-dim">{hint}</span>
+        <span className={`text-[10px] font-mono w-8 text-right tabular-nums shrink-0 ${enabled ? 'text-text-muted' : 'text-text-dim'}`}>
+          {Math.round(strength * 100)}%
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={strength}
+        disabled={!enabled}
+        onChange={(e) => onStrength(parseFloat(e.target.value))}
+        className={`w-full h-1.5 rounded-full appearance-none bg-bg-input accent-[#00d4ff] transition-opacity ${
+          enabled ? 'cursor-pointer' : 'opacity-30 cursor-not-allowed'
+        }`}
+      />
+    </div>
   );
 }
 

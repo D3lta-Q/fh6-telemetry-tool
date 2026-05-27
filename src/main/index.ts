@@ -123,7 +123,7 @@ function registerIpcHandlers(): void {
     if (feedback) {
       const configKeys: (keyof AppSettings)[] = [
         'dualsensePort', 'dualsenseBrakeStrength', 'dualsenseBrakeMaxFreq',
-        'dualsenseThrottleStrength', 'dualsenseThrottleMaxFreq',
+        'dualsenseThrottleStrength', 'dualsenseThrottleMaxFreq', 'dualsenseSources',
       ];
       if (configKeys.some((k) => patch[k] !== undefined)) {
         feedback.updateConfig({
@@ -132,6 +132,7 @@ function registerIpcHandlers(): void {
           brakeMaxFreq: next.dualsenseBrakeMaxFreq,
           throttleStrength: next.dualsenseThrottleStrength,
           throttleMaxFreq: next.dualsenseThrottleMaxFreq,
+          sources: next.dualsenseSources,
         });
       }
       if (patch.dualsenseEnabled !== undefined) {
@@ -177,6 +178,7 @@ app.whenReady().then(() => {
     brakeMaxFreq: settings.dualsenseBrakeMaxFreq,
     throttleStrength: settings.dualsenseThrottleStrength,
     throttleMaxFreq: settings.dualsenseThrottleMaxFreq,
+    sources: settings.dualsenseSources,
   });
   if (settings.dualsenseEnabled) feedback.enable();
 

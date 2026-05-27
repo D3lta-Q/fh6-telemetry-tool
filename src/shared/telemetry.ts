@@ -219,6 +219,17 @@ export interface AppSettings {
   dualsenseThrottleStrength: number;
   /** R2 (throttle) maximum vibration frequency in Hz 1–150. Default 96. */
   dualsenseThrottleMaxFreq: number;
+  /** Which telemetry signals contribute to trigger intensity, and by how much (0–1). */
+  dualsenseSources: {
+    /** Tyre slip ratios: L2 weights front lock, R2 weights rear wheelspin. */
+    slip: { enabled: boolean; strength: number };
+    /** Road surface texture from the game's surfaceRumble channels. */
+    surface: { enabled: boolean; strength: number };
+    /** Engine RPM as a fraction of the redline. */
+    rpm: { enabled: boolean; strength: number };
+    /** Vehicle speed, saturating at ~290 km/h. */
+    speed: { enabled: boolean; strength: number };
+  };
   /**
    * Per-panel visibility. Hidden panels are removed from the dashboard grid;
    * remaining panels reflow to fill the freed space.
@@ -256,6 +267,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dualsenseBrakeMaxFreq: 85,
   dualsenseThrottleStrength: 8,
   dualsenseThrottleMaxFreq: 96,
+  dualsenseSources: {
+    slip:    { enabled: true,  strength: 1 },
+    surface: { enabled: false, strength: 0.5 },
+    rpm:     { enabled: false, strength: 0.3 },
+    speed:   { enabled: false, strength: 0.2 },
+  },
   visiblePanels: {
     engine: true,
     inputs: true,
