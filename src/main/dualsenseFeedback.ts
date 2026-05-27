@@ -12,9 +12,10 @@ import type { TelemetryData } from '@shared/telemetry';
  * JSON object with an `instructions` array. We use CustomTriggerValue mode
  * with VibrateResistanceB (mode 11) which accepts a frequency + amplitude.
  *
- * Trigger enum:  Left = 1 (L2),  Right = 2 (R2)
- * TriggerMode:   CustomTriggerValue = 12
- * CustomMode:    VibrateResistanceB = 11
+ * InstructionType: TriggerUpdate = 1
+ * Trigger enum:    Left = 1 (L2),  Right = 2 (R2)
+ * TriggerMode:     CustomTriggerValue = 12
+ * CustomMode:      VibrateResistanceB = 11
  */
 
 const TRIGGER_LEFT = 1;
@@ -22,7 +23,8 @@ const TRIGGER_RIGHT = 2;
 const TRIGGER_MODE_CUSTOM = 12;
 const CUSTOM_MODE_VIBRATE_RESISTANCE_B = 11;
 const TRIGGER_MODE_NORMAL = 0;
-const INSTRUCTION_TYPE_TRIGGER = 3;
+// DSX UDP API: InstructionType.TriggerUpdate = 1 (not 3, which is PlayerLED)
+const INSTRUCTION_TYPE_TRIGGER = 1;
 
 // Minimum brake/throttle input (0–1) required to activate feedback.
 const BRAKE_THRESHOLD = 0.03;
