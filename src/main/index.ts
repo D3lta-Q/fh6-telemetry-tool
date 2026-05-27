@@ -5,6 +5,7 @@ import type { AppSettings } from '@shared/telemetry';
 import { ForzaUdpServer } from './udpServer';
 import { getSettings, setSettings } from './settings';
 import { Recorder } from './recorder';
+import { DualSenseFeedback } from './dualsenseFeedback';
 
 // Disable hardware acceleration only if we hit issues on Linux/older GPUs.
 // We leave it on by default because the graphs benefit from GPU compositing.
@@ -13,6 +14,7 @@ let mainWindow: BrowserWindow | null = null;
 let server: ForzaUdpServer | null = null;
 const recorder = new Recorder();
 let registeredHotkey: string | null = null;
+let feedback: DualSenseFeedback | null = null;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -87,6 +89,7 @@ function startServer(port: number): void {
     // IPC throughput; the renderer is responsible for any further coalescing.
     mainWindow?.webContents.send(IPC.TELEMETRY_PACKET, data);
     recorder.push(data);
+    feedback?.push(data);
   });
 
   server.on('status', (status) => {
@@ -116,6 +119,25 @@ function registerIpcHandlers(): void {
     }
     if (patch.recordHotkey !== undefined) {
       registerRecordHotkey(patch.recordHotkey);
+    }
+    if (feedback) {
+      const configKeys: (keyof AppSettings)[] = [
+        'dualsensePort', 'dualsenseBrakeStrength', 'dualsenseBrakeMaxFreq',
+        'dualsenseThrottleStrength', 'dualsenseThrottleMaxFreq',
+      ];
+      if (configKeys.some((k) => patch[k] !== undefined)) {
+        feedback.updateConfig({
+          port: next.dualsensePort,
+          brakeStrength: next.dualsenseBrakeStrength,
+          brakeMaxFreq: next.dualsenseBrakeMaxFreq,
+          throttleStrength: next.dualsenseThrottleStrength,
+          throttleMaxFreq: next.dualsenseThrottleMaxFreq,
+        });
+      }
+      if (patch.dualsenseEnabled !== undefined) {
+        if (patch.dualsenseEnabled) feedback.enable();
+        else feedback.disable();
+      }
     }
     return next;
   });
@@ -149,6 +171,14 @@ app.whenReady().then(() => {
   const settings = getSettings();
   startServer(settings.port);
   registerRecordHotkey(settings.recordHotkey);
+  feedback = new DualSenseFeedback({
+    port: settings.dualsensePort,
+    brakeStrength: settings.dualsenseBrakeStrength,
+    brakeMaxFreq: settings.dualsenseBrakeMaxFreq,
+    throttleStrength: settings.dualsenseThrottleStrength,
+    throttleMaxFreq: settings.dualsenseThrottleMaxFreq,
+  });
+  if (settings.dualsenseEnabled) feedback.enable();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -167,4 +197,5 @@ app.on('before-quit', () => {
   server?.stop();
   globalShortcut.unregisterAll();
   recorder.abort();
+  feedback?.destroy();
 });

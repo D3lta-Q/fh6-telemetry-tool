@@ -220,6 +220,62 @@ export function Settings({ open, onClose }: SettingsProps) {
             />
           </Section>
 
+          {/* DualSense section */}
+          <Section title="DualSense Triggers" tag="HAPTICS">
+            <p className="text-[10px] font-mono text-text-dim -mt-1">
+              Requires DSX (DualSenseX) running on localhost. L2 vibrates on brake-induced wheel lock, R2 on throttle-induced wheelspin.
+            </p>
+            <Toggle
+              label="Enable adaptive trigger feedback"
+              value={settings.dualsenseEnabled}
+              onChange={(v) => update({ dualsenseEnabled: v })}
+            />
+            {settings.dualsenseEnabled && (
+              <>
+                <Field label="DSX UDP port" hint="Default 6969. Must match DSX's listening port.">
+                  <NumberInput
+                    value={settings.dualsensePort}
+                    onChange={(v) => update({ dualsensePort: v })}
+                    min={1}
+                    max={65535}
+                  />
+                </Field>
+                <Field label="Brake (L2) strength" hint="Resistance intensity 0–8.">
+                  <SliderNumber
+                    value={settings.dualsenseBrakeStrength}
+                    onChange={(v) => update({ dualsenseBrakeStrength: v })}
+                    min={0}
+                    max={8}
+                  />
+                </Field>
+                <Field label="Brake (L2) max frequency" hint="Vibration speed at full lock, 1–150 Hz.">
+                  <SliderNumber
+                    value={settings.dualsenseBrakeMaxFreq}
+                    onChange={(v) => update({ dualsenseBrakeMaxFreq: v })}
+                    min={1}
+                    max={150}
+                  />
+                </Field>
+                <Field label="Throttle (R2) strength" hint="Resistance intensity 0–8.">
+                  <SliderNumber
+                    value={settings.dualsenseThrottleStrength}
+                    onChange={(v) => update({ dualsenseThrottleStrength: v })}
+                    min={0}
+                    max={8}
+                  />
+                </Field>
+                <Field label="Throttle (R2) max frequency" hint="Vibration speed at full wheelspin, 1–150 Hz.">
+                  <SliderNumber
+                    value={settings.dualsenseThrottleMaxFreq}
+                    onChange={(v) => update({ dualsenseThrottleMaxFreq: v })}
+                    min={1}
+                    max={150}
+                  />
+                </Field>
+              </>
+            )}
+          </Section>
+
           {/* Reset button */}
           <button
             onClick={resetDefaults}
@@ -447,6 +503,43 @@ function HotkeyInput({ value, onChange }: { value: string; onChange: (v: string)
     >
       {capturing ? 'Press a key…' : value}
     </button>
+  );
+}
+
+function SliderNumber({
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-bg-input accent-[#00d4ff]"
+      />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => {
+          const v = parseInt(e.target.value, 10);
+          if (Number.isFinite(v) && v >= min && v <= max) onChange(v);
+        }}
+        className="w-16 h-8 px-2 rounded border border-border-muted bg-bg-input font-mono text-sm text-text focus:outline-none focus:border-border-accent"
+      />
+    </div>
   );
 }
 

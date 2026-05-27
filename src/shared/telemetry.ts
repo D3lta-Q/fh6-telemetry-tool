@@ -207,6 +207,18 @@ export interface AppSettings {
   uiScale: number;
   /** Electron accelerator string for the global record hotkey. Default 'F9'. */
   recordHotkey: string;
+  /** DualSense adaptive trigger feedback via DSX. */
+  dualsenseEnabled: boolean;
+  /** UDP port DSX is listening on. Default 6969. */
+  dualsensePort: number;
+  /** L2 (brake) feedback strength 0–8. Default 7. */
+  dualsenseBrakeStrength: number;
+  /** L2 (brake) maximum vibration frequency in Hz 1–150. Default 85. */
+  dualsenseBrakeMaxFreq: number;
+  /** R2 (throttle) feedback strength 0–8. Default 8. */
+  dualsenseThrottleStrength: number;
+  /** R2 (throttle) maximum vibration frequency in Hz 1–150. Default 96. */
+  dualsenseThrottleMaxFreq: number;
   /**
    * Per-panel visibility. Hidden panels are removed from the dashboard grid;
    * remaining panels reflow to fill the freed space.
@@ -238,6 +250,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showInputsGraph: false,
   uiScale: 1,
   recordHotkey: 'F9',
+  dualsenseEnabled: false,
+  dualsensePort: 6969,
+  dualsenseBrakeStrength: 7,
+  dualsenseBrakeMaxFreq: 85,
+  dualsenseThrottleStrength: 8,
+  dualsenseThrottleMaxFreq: 96,
   visiblePanels: {
     engine: true,
     inputs: true,
