@@ -8,6 +8,8 @@ export interface WidgetProps {
   controls?: ReactNode;
   /** A row of large numeric readouts below the title. */
   readout?: ReactNode;
+  /** Color legend shown at the bottom of the panel. */
+  legend?: Array<{ color: string; label: string }>;
   className?: string;
   children: ReactNode;
 }
@@ -20,7 +22,7 @@ export interface WidgetProps {
  * feel. The accent hairline gives each panel a sliver of color identity
  * without dominating.
  */
-export function Widget({ title, tag, controls, readout, className = '', children }: WidgetProps) {
+export function Widget({ title, tag, controls, readout, legend, className = '', children }: WidgetProps) {
   return (
     <div
       className={`relative flex flex-col h-full rounded-md border border-border bg-bg-surface panel-grain ${className}`}
@@ -43,7 +45,18 @@ export function Widget({ title, tag, controls, readout, className = '', children
 
       {readout && <div className="px-4 pb-2">{readout}</div>}
 
-      <div className="flex-1 min-h-0 flex flex-col px-2 pb-3">{children}</div>
+      <div className={`flex-1 min-h-0 flex flex-col px-2 ${legend ? 'pb-1' : 'pb-3'}`}>{children}</div>
+
+      {legend && legend.length > 0 && (
+        <div className="flex items-center justify-center gap-x-4 gap-y-1 px-3 pb-2 pt-0.5 flex-wrap">
+          {legend.map(({ color, label }) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-[9px] font-mono uppercase tracking-wider text-text-dim">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -35,33 +35,51 @@ export function TireGripWidget() {
     <Widget
       title="Tire Grip"
       tag="TRACTION"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
-        <IconButton
-          active={settings.showTireGripGraph}
-          onClick={() => update({ showTireGripGraph: !settings.showTireGripGraph })}
-          title="Toggle graph"
-        >
-          <ChartIcon />
-        </IconButton>
+        <>
+          <IconButton
+            active={settings.showTireGripVisual}
+            onClick={() => update({ showTireGripVisual: !settings.showTireGripVisual })}
+            title="Toggle visual"
+          >
+            <EyeIcon />
+          </IconButton>
+          <IconButton
+            active={settings.showTireGripGraph}
+            onClick={() => update({ showTireGripGraph: !settings.showTireGripGraph })}
+            title="Toggle graph"
+          >
+            <ChartIcon />
+          </IconButton>
+        </>
       }
     >
-      <div className={settings.showTireGripGraph ? 'flex-1 min-h-0 grid grid-rows-2 gap-2' : 'flex-1 min-h-0 flex flex-col'}>
-        <div className={settings.showTireGripGraph ? 'min-h-0' : 'flex-1 min-h-0'}>
-          <TireGripVisual />
-        </div>
-        {settings.showTireGripGraph && (
-          <div className="min-h-0 flex flex-col">
-            <LiveLineChart
-              buffer={buffer}
-              windowSec={windowSec}
-              series={series}
-              height="auto"
-              yRange={[0, 2]}
-            />
+      {(() => {
+        const showV = settings.showTireGripVisual;
+        const showG = settings.showTireGripGraph;
+        const both = showV && showG;
+        return (
+          <div className={`flex-1 min-h-0 ${both ? 'grid grid-rows-2 gap-2' : 'flex flex-col'}`}>
+            {showV && <div className={both ? 'min-h-0' : 'flex-1 min-h-0'}><TireGripVisual /></div>}
+            {showG && (
+              <div className={both ? 'min-h-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}>
+                <LiveLineChart buffer={buffer} windowSec={windowSec} series={series} height="auto" yRange={[0, 2]} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </Widget>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
   );
 }
 

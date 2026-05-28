@@ -27,32 +27,51 @@ export function TireTempWidget() {
     <Widget
       title="Tire Temperature"
       tag="THERMAL"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       controls={
-        <IconButton
-          active={settings.showTireTempGraph}
-          onClick={() => update({ showTireTempGraph: !settings.showTireTempGraph })}
-          title="Toggle graph"
-        >
-          <ChartIcon />
-        </IconButton>
+        <>
+          <IconButton
+            active={settings.showTireTempVisual}
+            onClick={() => update({ showTireTempVisual: !settings.showTireTempVisual })}
+            title="Toggle visual"
+          >
+            <EyeIcon />
+          </IconButton>
+          <IconButton
+            active={settings.showTireTempGraph}
+            onClick={() => update({ showTireTempGraph: !settings.showTireTempGraph })}
+            title="Toggle graph"
+          >
+            <ChartIcon />
+          </IconButton>
+        </>
       }
     >
-      <div className={settings.showTireTempGraph ? 'flex-1 min-h-0 grid grid-rows-2 gap-2' : 'flex-1 min-h-0 flex flex-col'}>
-        <div className={settings.showTireTempGraph ? 'min-h-0' : 'flex-1 min-h-0'}>
-          <TireTempVisual />
-        </div>
-        {settings.showTireTempGraph && (
-          <div className="min-h-0 flex flex-col">
-            <LiveLineChart
-              buffer={buffer}
-              windowSec={windowSec}
-              series={series}
-              height="auto"
-            />
+      {(() => {
+        const showV = settings.showTireTempVisual;
+        const showG = settings.showTireTempGraph;
+        const both = showV && showG;
+        return (
+          <div className={`flex-1 min-h-0 ${both ? 'grid grid-rows-2 gap-2' : 'flex flex-col'}`}>
+            {showV && <div className={both ? 'min-h-0' : 'flex-1 min-h-0'}><TireTempVisual /></div>}
+            {showG && (
+              <div className={both ? 'min-h-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}>
+                <LiveLineChart buffer={buffer} windowSec={windowSec} series={series} height="auto" />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </Widget>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
   );
 }
 

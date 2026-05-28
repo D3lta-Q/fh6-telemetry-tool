@@ -108,6 +108,7 @@ export function EngineWidget() {
     <Widget
       title="Powertrain"
       tag="ENGINE"
+      legend={series.map((s) => ({ color: s.color, label: s.label }))}
       readout={
         <div className="grid grid-cols-3 gap-4">
           <Readout

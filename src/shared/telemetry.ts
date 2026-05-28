@@ -203,6 +203,12 @@ export interface AppSettings {
   showTireTempGraph: boolean;
   showTireGripGraph: boolean;
   showInputsGraph: boolean;
+  /** Show the main graphic inside each widget. */
+  showSuspensionVisual: boolean;
+  showWheelVisual: boolean;
+  showTireTempVisual: boolean;
+  showTireGripVisual: boolean;
+  showInputsVisual: boolean;
   /** Scale factor applied to all dashboard panels (0.6–1.4). Default 1. */
   uiScale: number;
   /** Electron accelerator string for the global record hotkey. Default 'F9'. */
@@ -259,6 +265,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showTireTempGraph: false,
   showTireGripGraph: false,
   showInputsGraph: false,
+  showSuspensionVisual: true,
+  showWheelVisual: true,
+  showTireTempVisual: true,
+  showTireGripVisual: true,
+  showInputsVisual: true,
   uiScale: 1,
   recordHotkey: 'F9',
   dualsenseEnabled: false,

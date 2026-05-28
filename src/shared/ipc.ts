@@ -21,6 +21,14 @@ export const IPC = {
   STOP_RECORDING: 'recording:stop',
   /** Main -> Renderer. Pushed when recording state changes (start/stop/hotkey). Payload: RecordingStatus. */
   RECORDING_STATUS: 'recording:status',
+  /** Renderer -> Main (invoke). Opens save dialog and writes a .fzt file. Payload: FztSession. Returns 'saved' | 'cancelled'. */
+  SAVE_TRACK_SESSION: 'track:save',
+  /** Renderer -> Main (invoke). Opens a .fzt file via dialog. Returns FztSession or null if cancelled. */
+  OPEN_TRACK_SESSION: 'track:open',
+  /** Renderer -> Main (invoke). Open a child window for a specific tab. Payload: 'dashboard' | 'track'. */
+  POP_OUT_TAB: 'window:pop-out',
+  /** Main -> Renderer. Tells a popped-out window which tab it should show. Payload: string. */
+  WINDOW_TAB: 'window:tab',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

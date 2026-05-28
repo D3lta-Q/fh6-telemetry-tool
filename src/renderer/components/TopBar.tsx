@@ -1,6 +1,7 @@
 import { useTelemetryStore } from '../store/telemetryStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useRecordingStore } from '../store/recordingStore';
+import { usePlaybackStore } from '../store/playbackStore';
 import { useAnimationTick } from '../hooks/useAnimationTick';
 import { StatPill, SegmentedControl } from './ui';
 import { TIME_WINDOW_OPTIONS } from '@shared/telemetry';
@@ -56,6 +57,8 @@ export function TopBar({ onOpenSettings, onOpenPanels }: TopBarProps) {
   const updateSettings = useSettingsStore((s) => s.update);
   const isRecording = useRecordingStore((s) => s.isRecording);
   const elapsedMs = useRecordingStore((s) => s.elapsedMs);
+  const playbackSession = usePlaybackStore((s) => s.session);
+  const loadSession = usePlaybackStore((s) => s.loadSession);
 
   const isLive = status?.lastPacketAt !== null && status?.lastPacketAt !== undefined
     && Date.now() - status.lastPacketAt < 1500;
@@ -151,6 +154,23 @@ export function TopBar({ onOpenSettings, onOpenPanels }: TopBarProps) {
             />
             <StatPill label="PI" value={String(latest.carPerformanceIndex || '—')} />
           </>
+        )}
+
+        {/* Open session button */}
+        {!playbackSession && !isRecording && (
+          <button
+            onClick={() => {
+              void window.forza.openTrackSession().then((s) => { if (s) loadSession(s); });
+            }}
+            className="h-8 px-3 inline-flex items-center gap-1.5 rounded border border-border-muted bg-bg-input hover:border-border text-text-muted hover:text-text transition-colors"
+            title="Open a saved .fzt session"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 10V3a1 1 0 011-1h2.5l1 1H9a1 1 0 011 1v1" />
+              <path d="M1.5 10l1.5-4h8.5l-1.5 4H1.5z" />
+            </svg>
+            <span className="text-[11px] font-mono uppercase tracking-wider">Open</span>
+          </button>
         )}
 
         {/* Record / Stop Recording button */}
