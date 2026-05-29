@@ -89,8 +89,10 @@ export function ResultsPanel({ result, units }: { result: TuneResult; units: Tun
             display={spring(result.springs.rear.englishValueAsNumber).toFixed(sDec)} unit={sUnit} />
         </SubSection>
         <SubSection label="Ride Height">
-          <TextRow label="Front" value={result.springs.rideHeight.label} />
-          <TextRow label="Rear" value={result.springs.rideHeight.label} />
+          <ValueRow label="Front" rv={result.springs.rideHeight}
+            display={result.springs.rideHeight.label} />
+          <ValueRow label="Rear" rv={result.springs.rideHeight}
+            display={result.springs.rideHeight.label} />
         </SubSection>
       </Section>
 
