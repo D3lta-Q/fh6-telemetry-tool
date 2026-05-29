@@ -6,11 +6,12 @@ import { usePlaybackStore } from './store/playbackStore';
 import { TopBar } from './components/TopBar';
 import { Dashboard } from './components/Dashboard';
 import { TrackTab } from './components/TrackTab';
+import { TuningTab } from './components/tuning/TuningTab';
 import { Settings } from './components/Settings';
 import { PanelsDrawer } from './components/PanelsDrawer';
 import { PlaybackBar } from './components/PlaybackBar';
 
-type AppTab = 'dashboard' | 'track';
+type AppTab = 'dashboard' | 'track' | 'tuning';
 
 export function App() {
   useTelemetryBridge();
@@ -67,7 +68,7 @@ export function App() {
           onOpenPanels={() => setPanelsOpen(true)}
         />
         <div className="flex-1 min-h-0 flex flex-col">
-          {poppedTab === 'dashboard' ? <Dashboard /> : <TrackTab />}
+          {poppedTab === 'dashboard' ? <Dashboard /> : poppedTab === 'track' ? <TrackTab /> : <TuningTab />}
         </div>
         {session && <PlaybackBar />}
         <PanelsDrawer open={panelsOpen} onClose={() => setPanelsOpen(false)} />
@@ -91,6 +92,9 @@ export function App() {
         <TabButton active={activeTab === 'track'} onClick={() => setActiveTab('track')}>
           Track
         </TabButton>
+        <TabButton active={activeTab === 'tuning'} onClick={() => setActiveTab('tuning')}>
+          Tuning
+        </TabButton>
 
         <div className="ml-auto flex items-center gap-1">
           <PopOutButton onClick={() => void window.forza.popOutTab(activeTab)} />
@@ -103,6 +107,9 @@ export function App() {
       </div>
       <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'track' ? '' : 'hidden'}`}>
         <TrackTab />
+      </div>
+      <div className={`flex-1 min-h-0 flex flex-col ${activeTab === 'tuning' ? '' : 'hidden'}`}>
+        <TuningTab />
       </div>
 
       {/* Shared playback bar (visible in both tabs when a session is loaded) */}
