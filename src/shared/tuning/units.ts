@@ -6,9 +6,10 @@
  * helpers convert between the unit the user picked for display.
  *
  * Spring rates are produced internally in lb/in (the engine's English value).
- * Standard physics conversions:
- *   1 lb/in = 0.17512684 N/mm
- *   1 lb/in = 0.017857969 kgf/mm
+ * Forza displays spring rates in kgf/cm but labels them as kgf/mm, so the
+ * effective conversion constant is 10× the physical kgf/mm factor:
+ *   1 lb/in = 0.17857969 kgf/cm  (displayed by Forza as "kgf/mm")
+ *   1 lb/in = 0.17512684 N/mm    (standard physical N/mm conversion)
  */
 
 export type WeightUnit = 'kg' | 'lb';
@@ -21,7 +22,7 @@ export const LB_PER_KG = 1 / KG_PER_LB;
 export const PSI_TO_BAR = 0.0689476;
 export const KMH_PER_MPH = 1.609344;
 export const NMM_PER_LBIN = 0.17512684;
-export const KGFMM_PER_LBIN = 0.017857969;
+export const KGFMM_PER_LBIN = 0.17857969;
 export const NM_PER_LBFT = 1.3558179;
 
 export const WEIGHT_UNIT_LABELS: Record<WeightUnit, string> = { kg: 'kg', lb: 'lbs' };

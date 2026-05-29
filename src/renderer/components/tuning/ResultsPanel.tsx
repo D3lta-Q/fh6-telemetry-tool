@@ -7,110 +7,252 @@ import {
 } from '@shared/tuning';
 import type { TuningUnits } from '../../store/tuningStore';
 
-/**
- * Renders a calculated tune. Spring rates and tyre pressures are converted
- * from the engine's internal units (lb/in, psi) to the user's chosen display
- * units; other values are unit-agnostic (degrees, percentages, slider clicks).
- */
+interface RangeLike {
+  englishValueAsNumber: number;
+  minEnglishValue: number;
+  maxEnglishValue: number;
+}
+
+function sliderPct(v: RangeLike): number {
+  const range = v.maxEnglishValue - v.minEnglishValue;
+  if (range === 0) return 50;
+  return Math.min(100, Math.max(0, ((v.englishValueAsNumber - v.minEnglishValue) / range) * 100));
+}
+
 export function ResultsPanel({ result, units }: { result: TuneResult; units: TuningUnits }) {
   const psi = (v: number) => pressureFromPsi(v, units.pressure);
   const spring = (v: number) => springFromLbIn(v, units.spring);
   const pUnit = PRESSURE_UNIT_LABELS[units.pressure];
   const sUnit = SPRING_UNIT_LABELS[units.spring];
-
   const pDec = units.pressure === 'bar' ? 2 : 1;
   const sDec = units.spring === 'lbin' ? 0 : 2;
 
   return (
-    <div className="flex flex-col gap-5">
-      <Group title="Tires" tag="PRESSURE">
-        <Pair label="Front" value={psi(result.tires.front.englishValueAsNumber).toFixed(pDec)} unit={pUnit} />
-        <Pair label="Rear" value={psi(result.tires.rear.englishValueAsNumber).toFixed(pDec)} unit={pUnit} />
-      </Group>
+    <div className="flex flex-col gap-2">
 
-      <Group title="Alignment" tag="GEOMETRY">
-        <Pair label="Front Camber" value={result.alignment.frontCamber.englishValueAsNumber.toFixed(1)} unit="°" />
-        <Pair label="Rear Camber" value={result.alignment.rearCamber.englishValueAsNumber.toFixed(1)} unit="°" />
-        <Pair label="Front Toe" value={result.alignment.frontToe.englishValueAsNumber.toFixed(1)} unit="°" />
-        <Pair label="Rear Toe" value={result.alignment.rearToe.englishValueAsNumber.toFixed(1)} unit="°" />
-        <Pair label="Caster" value={result.alignment.caster.englishValueAsNumber.toFixed(1)} unit="°" />
-      </Group>
+      {/* TIRES */}
+      <Section label="Tires">
+        <SubSection label="Tire Pressure">
+          <ValueRow label="Front" rv={result.tires.front}
+            display={psi(result.tires.front.englishValueAsNumber).toFixed(pDec)} unit={pUnit} />
+          <ValueRow label="Rear" rv={result.tires.rear}
+            display={psi(result.tires.rear.englishValueAsNumber).toFixed(pDec)} unit={pUnit} />
+        </SubSection>
+      </Section>
 
-      <Group title="Anti-Roll Bars" tag="ARB">
-        <Pair label="Front" value={result.swayBars.front.englishValueAsNumber.toFixed(2)} />
-        <Pair label="Rear" value={result.swayBars.rear.englishValueAsNumber.toFixed(2)} />
-      </Group>
+      {/* GEARING */}
+      {result.gears && (
+        <Section label="Gearing">
+          <SubSection label="Forward Gears">
+            <TextRow label="Final Drive" value={result.gears.final.toFixed(2)} />
+            {result.gears.ratios.map((r, i) => (
+              <TextRow key={i} label={ordinal(i + 1) + ' Gear'} value={r.toFixed(2)} />
+            ))}
+          </SubSection>
+        </Section>
+      )}
 
-      <Group title="Springs" tag={sUnit.toUpperCase()}>
-        <Pair label="Front" value={spring(result.springs.front.englishValueAsNumber).toFixed(sDec)} unit={sUnit} />
-        <Pair label="Rear" value={spring(result.springs.rear.englishValueAsNumber).toFixed(sDec)} unit={sUnit} />
-        <Pair label="Ride Height" value={result.springs.rideHeight.label} />
-      </Group>
+      {/* ALIGNMENT */}
+      <Section label="Alignment">
+        <SubSection label="Camber">
+          <ValueRow label="Front" rv={result.alignment.frontCamber}
+            display={result.alignment.frontCamber.englishValueAsNumber.toFixed(1)} unit="°" />
+          <ValueRow label="Rear" rv={result.alignment.rearCamber}
+            display={result.alignment.rearCamber.englishValueAsNumber.toFixed(1)} unit="°" />
+        </SubSection>
+        <SubSection label="Toe">
+          <ValueRow label="Front" rv={result.alignment.frontToe}
+            display={result.alignment.frontToe.englishValueAsNumber.toFixed(1)} unit="°" />
+          <ValueRow label="Rear" rv={result.alignment.rearToe}
+            display={result.alignment.rearToe.englishValueAsNumber.toFixed(1)} unit="°" />
+        </SubSection>
+        <SubSection label="Front Caster">
+          <ValueRow label="Angle" rv={result.alignment.caster}
+            display={result.alignment.caster.englishValueAsNumber.toFixed(1)} unit="°" />
+        </SubSection>
+      </Section>
 
-      <Group title="Damping" tag="STIFFNESS">
-        <Pair label="Front Bump" value={result.damping.frontBump.englishValueAsNumber.toFixed(1)} />
-        <Pair label="Rear Bump" value={result.damping.rearBump.englishValueAsNumber.toFixed(1)} />
-        <Pair label="Front Rebound" value={result.damping.frontRebound.englishValueAsNumber.toFixed(1)} />
-        <Pair label="Rear Rebound" value={result.damping.rearRebound.englishValueAsNumber.toFixed(1)} />
-      </Group>
+      {/* ANTIROLL BARS */}
+      <Section label="Antiroll Bars">
+        <ValueRow label="Front" rv={result.swayBars.front}
+          display={result.swayBars.front.englishValueAsNumber.toFixed(2)} />
+        <ValueRow label="Rear" rv={result.swayBars.rear}
+          display={result.swayBars.rear.englishValueAsNumber.toFixed(2)} />
+      </Section>
 
-      <Group title="Aero" tag="DOWNFORCE">
-        <Pair label="Front" value={result.aero.frontLabel} />
-        <Pair label="Rear" value={result.aero.rearLabel} />
+      {/* SPRINGS */}
+      <Section label="Springs">
+        <SubSection label="Springs">
+          <ValueRow label="Front" rv={result.springs.front}
+            display={spring(result.springs.front.englishValueAsNumber).toFixed(sDec)} unit={sUnit} />
+          <ValueRow label="Rear" rv={result.springs.rear}
+            display={spring(result.springs.rear.englishValueAsNumber).toFixed(sDec)} unit={sUnit} />
+        </SubSection>
+        <SubSection label="Ride Height">
+          <TextRow label="Front" value={result.springs.rideHeight.label} />
+          <TextRow label="Rear" value={result.springs.rideHeight.label} />
+        </SubSection>
+      </Section>
+
+      {/* DAMPING */}
+      <Section label="Damping">
+        <SubSection label="Rebound Stiffness">
+          <ValueRow label="Front" rv={result.damping.frontRebound}
+            display={result.damping.frontRebound.englishValueAsNumber.toFixed(1)} />
+          <ValueRow label="Rear" rv={result.damping.rearRebound}
+            display={result.damping.rearRebound.englishValueAsNumber.toFixed(1)} />
+        </SubSection>
+        <SubSection label="Bump Stiffness">
+          <ValueRow label="Front" rv={result.damping.frontBump}
+            display={result.damping.frontBump.englishValueAsNumber.toFixed(1)} />
+          <ValueRow label="Rear" rv={result.damping.rearBump}
+            display={result.damping.rearBump.englishValueAsNumber.toFixed(1)} />
+        </SubSection>
+      </Section>
+
+      {/* AERO */}
+      <Section label="Aero">
+        <SubSection label="Downforce">
+          <PctRow label="Front" pct={result.aero.frontValue} display={result.aero.frontLabel} />
+          <PctRow label="Rear" pct={result.aero.rearValue} display={result.aero.rearLabel} />
+        </SubSection>
         {result.aero.message && (
-          <p className="text-[10px] font-mono text-text-dim leading-relaxed col-span-2 pt-1">
+          <p className="text-[10px] font-mono text-text-dim leading-relaxed px-3 pb-1">
             {result.aero.message}
           </p>
         )}
-      </Group>
+      </Section>
 
-      <Group title="Braking" tag="BRAKES">
-        <Pair label="Balance (front)" value={result.brakes.balance.toFixed(0) + '%'} />
-        <Pair label="Force" value={result.brakes.force.toFixed(0) + '%'} />
-      </Group>
+      {/* BRAKES */}
+      <Section label="Brakes">
+        <PctRow label="Braking Balance" pct={result.brakes.balance}
+          display={result.brakes.balance.toFixed(0) + '%'} />
+        <PctRow label="Braking Pressure" pct={result.brakes.force}
+          display={result.brakes.force.toFixed(0) + '%'} />
+      </Section>
 
-      <Group title="Differential" tag="DIFF">
-        <Pair label="Front Accel" value={result.differentials.front.accel.toFixed(0) + '%'} />
-        <Pair label="Front Decel" value={result.differentials.front.decel.toFixed(0) + '%'} />
-        <Pair label="Rear Accel" value={result.differentials.rear.accel.toFixed(0) + '%'} />
-        <Pair label="Rear Decel" value={result.differentials.rear.decel.toFixed(0) + '%'} />
-        <Pair label="Center Balance" value={result.differentials.centerSplit.toFixed(0) + '%'} />
-      </Group>
+      {/* DIFFERENTIAL */}
+      <Section label="Differential">
+        <SubSection label="Front">
+          <PctRow label="Acceleration" pct={result.differentials.front.accel}
+            display={result.differentials.front.accel.toFixed(0) + '%'} />
+          <PctRow label="Deceleration" pct={result.differentials.front.decel}
+            display={result.differentials.front.decel.toFixed(0) + '%'} />
+        </SubSection>
+        <SubSection label="Rear">
+          <PctRow label="Acceleration" pct={result.differentials.rear.accel}
+            display={result.differentials.rear.accel.toFixed(0) + '%'} />
+          <PctRow label="Deceleration" pct={result.differentials.rear.decel}
+            display={result.differentials.rear.decel.toFixed(0) + '%'} />
+        </SubSection>
+        <SubSection label="Center">
+          <PctRow label="Balance" pct={result.differentials.centerSplit}
+            display={result.differentials.centerSplit.toFixed(0) + '%'} />
+        </SubSection>
+      </Section>
 
-      {result.gears && (
-        <Group title="Gearing" tag="RATIOS">
-          <Pair label="Final Drive" value={result.gears.final.toFixed(2)} />
-          {result.gears.ratios.map((r, i) => (
-            <Pair key={i} label={ordinal(i + 1) + ' Gear'} value={r.toFixed(2)} />
-          ))}
-        </Group>
-      )}
     </div>
   );
 }
 
-function Group({ title, tag, children }: { title: string; tag: string; children: React.ReactNode }) {
+// ---- layout primitives -------------------------------------------------------
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-baseline gap-3">
-        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">{tag}</span>
-        <h3 className="text-xs font-medium tracking-wide text-text-muted">{title}</h3>
+    <div className="flex flex-col">
+      <div className="px-3 py-1.5 border-l-2 border-[#00d4ff] bg-bg-elevated">
+        <span className="text-[11px] font-mono font-semibold uppercase tracking-[0.2em] text-[#00d4ff]">
+          {label}
+        </span>
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pl-2 border-l border-border-muted">
-        {children}
-      </div>
-    </section>
+      <div className="flex flex-col py-1">{children}</div>
+    </div>
   );
 }
 
-function Pair({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function SubSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-2">
+    <div className="flex flex-col">
+      <div className="px-3 pt-1 pb-0.5">
+        <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-text-dim">
+          {label}
+        </span>
+      </div>
+      <div className="flex flex-col">{children}</div>
+    </div>
+  );
+}
+
+function SliderTrack({ pct }: { pct: number }) {
+  return (
+    <div className="relative flex-1 h-4 flex items-center">
+      <div className="absolute inset-x-0 h-px bg-border-muted" />
+      <div className="absolute left-0 h-px bg-border" style={{ width: `${pct}%` }} />
+      <div
+        className="absolute w-[7px] h-[7px] rounded-full bg-text-muted border border-border"
+        style={{ left: `calc(${pct}% - 3.5px)` }}
+      />
+    </div>
+  );
+}
+
+function ValueRow({
+  label,
+  rv,
+  display,
+  unit,
+}: {
+  label: string;
+  rv: RangeLike;
+  display: string;
+  unit?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-[3px]">
+      <span className="text-[11px] text-text-muted w-24 shrink-0 truncate">{label}</span>
+      <SliderTrack pct={sliderPct(rv)} />
+      <ValueCell display={display} unit={unit} />
+    </div>
+  );
+}
+
+function PctRow({
+  label,
+  pct,
+  display,
+  unit,
+}: {
+  label: string;
+  pct: number;
+  display: string;
+  unit?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-[3px]">
+      <span className="text-[11px] text-text-muted w-24 shrink-0 truncate">{label}</span>
+      <SliderTrack pct={Math.min(100, Math.max(0, pct))} />
+      <ValueCell display={display} unit={unit} />
+    </div>
+  );
+}
+
+function TextRow({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-[3px]">
       <span className="text-[11px] text-text-muted truncate">{label}</span>
-      <span className="text-sm font-mono text-text tabular-nums shrink-0">
+      <span className="text-sm font-mono text-text tabular-nums ml-4 shrink-0">
         {value}
         {unit && <span className="text-text-dim text-[0.75em] ml-1">{unit}</span>}
       </span>
+    </div>
+  );
+}
+
+function ValueCell({ display, unit }: { display: string; unit?: string }) {
+  return (
+    <div className="text-sm font-mono text-text tabular-nums text-right w-[4.5rem] shrink-0">
+      {display}
+      {unit && <span className="text-text-dim text-[0.75em] ml-1">{unit}</span>}
     </div>
   );
 }
