@@ -21,13 +21,10 @@
 import type { TelemetryData } from '../telemetry';
 import { TuneType, Drivetrain } from '../tuning';
 import type { TuneParam } from './params';
-
-const G = 9.807; // m/s² per g
+import { G, isOffRoad, isAirborne, isCollisionImpulse } from './frameFlags';
 
 /** Lateral g above which a frame counts as "cornering". */
 const CORNER_G = 0.3;
-/** Single-frame |g| treated as a collision impulse when brake is not applied. */
-const COLLISION_G = 2.6;
 /** Frames invalidated on each side of a detected collision (~1s @ 60Hz). */
 const COLLISION_GUARD = 60;
 /** Brake fraction (0..1) above which a frame counts as "hard braking". */
@@ -75,24 +72,6 @@ interface Frame {
   valid: boolean;
 }
 
-function maxSurfaceRumble(d: TelemetryData): number {
-  return Math.max(
-    d.surfaceRumbleFrontLeft,
-    d.surfaceRumbleFrontRight,
-    d.surfaceRumbleRearLeft,
-    d.surfaceRumbleRearRight
-  );
-}
-
-function allWheelsDrooped(d: TelemetryData): boolean {
-  return (
-    d.normalizedSuspensionTravelFrontLeft < 0.05 &&
-    d.normalizedSuspensionTravelFrontRight < 0.05 &&
-    d.normalizedSuspensionTravelRearLeft < 0.05 &&
-    d.normalizedSuspensionTravelRearRight < 0.05
-  );
-}
-
 function isLooseSurfaceTune(t: TuneType): boolean {
   return t === TuneType.Rally || t === TuneType.Truck || t === TuneType.Buggy;
 }
@@ -106,11 +85,9 @@ function buildFrames(packets: TelemetryData[], ctx: AnalysisContext): Frame[] {
     const longG = d.accelerationZ / G;
     const brake = d.brake / 255;
     const throttle = d.accel / 255;
-    const offRoad = maxSurfaceRumble(d) > 0.15;
-    const airborne = allWheelsDrooped(d);
-    // Collision: a hard impulse in any axis without a matching brake input.
-    const impulse = Math.max(Math.abs(latG), Math.abs(longG));
-    const collision = impulse > COLLISION_G && brake < 0.3;
+    const offRoad = isOffRoad(d);
+    const airborne = isAirborne(d);
+    const collision = isCollisionImpulse(d);
     return { d, latG, longG, brake, throttle, offRoad, airborne, collision, valid: true };
   });
 

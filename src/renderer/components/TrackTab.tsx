@@ -20,6 +20,7 @@ export function TrackTab() {
   const loadSession = usePlaybackStore((s) => s.loadSession);
 
   const [mode, setMode] = useState<TrackMode>('free');
+  const [showValidation, setShowValidation] = useState(false);
 
   const handleStart = () => {
     startTracking(mode);
@@ -46,14 +47,21 @@ export function TrackTab() {
         mode={mode}
         isTracking={isTracking}
         metric={colorMetric}
+        showValidation={showValidation}
         onSetMode={setMode}
         onSetMetric={setColorMetric}
+        onToggleValidation={() => setShowValidation((v) => !v)}
         onStart={handleStart}
         onStop={() => void handleStop()}
         onOpen={() => void handleOpen()}
         onClosePlayback={handleClosePlayback}
       />
-      <TrackViewer mode={mode} isTracking={isTracking} metric={colorMetric} />
+      <TrackViewer
+        mode={mode}
+        isTracking={isTracking}
+        metric={colorMetric}
+        showValidation={showValidation}
+      />
     </div>
   );
 }

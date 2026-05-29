@@ -6,6 +6,7 @@ import { useTrackStore } from '../../store/trackStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { CarModel } from './CarModel';
 import { TrackPath } from './TrackPath';
+import { ValidationOverlay, VALIDATION_COLORS } from './ValidationOverlay';
 import { Markers, LapMarker } from './Markers';
 import { RaceOverlay } from './RaceOverlay';
 import type { TrackMode, PathColorMetric, FztSession, TrackFrame } from '@shared/track';
@@ -83,9 +84,10 @@ interface SceneProps {
   mode: TrackMode;
   fitTrigger: number;
   followCar: boolean;
+  showValidation: boolean;
 }
 
-function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar }: SceneProps) {
+function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar, showValidation }: SceneProps) {
   const frames = useTrackStore((s) => s.frames);
   const laps = useTrackStore((s) => s.laps);
   const positionChanges = useTrackStore((s) => s.positionChanges);
@@ -122,6 +124,7 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
         {commonLights}
         {grid}
         <TrackPath frames={pbFrames} metric={metric} rebuildEveryFrame />
+        {showValidation && <ValidationOverlay frames={pbFrames} rebuildEveryFrame />}
         <CarModel playbackFrame={currentFrame} />
         {session.mode === 'race' && (
           <>
@@ -147,6 +150,9 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
       {(isTracking || frames.length > 0) && (
         <TrackPath frames={frames} metric={metric} />
       )}
+      {showValidation && (isTracking || frames.length > 0) && (
+        <ValidationOverlay frames={frames} />
+      )}
       <CarModel />
       {mode === 'race' && (
         <>
@@ -168,9 +174,10 @@ interface TrackViewerProps {
   mode: TrackMode;
   isTracking: boolean;
   metric: PathColorMetric;
+  showValidation: boolean;
 }
 
-export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
+export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackViewerProps) {
   const session = usePlaybackStore((s) => s.session);
   const frameIndex = usePlaybackStore((s) => s.frameIndex);
   const frames = useTrackStore((s) => s.frames);
@@ -203,6 +210,7 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
             mode={mode}
             fitTrigger={fitTrigger}
             followCar={followCar}
+            showValidation={showValidation}
           />
           <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         </Suspense>
@@ -235,6 +243,18 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
         </button>
       </div>
 
+      {/* Validation legend */}
+      {showValidation && (
+        <div className="absolute bottom-3 left-3 flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
+          <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">
+            Validation
+          </span>
+          <LegendRow color={VALIDATION_COLORS.collision} label="Collision" shape="dot" />
+          <LegendRow color={VALIDATION_COLORS.offRoad} label="Off-road" shape="line" />
+          <LegendRow color={VALIDATION_COLORS.airborne} label="Airborne" shape="line" />
+        </div>
+      )}
+
       {/* Race overlay (absolute positioned over canvas) */}
       {raceOverlayFrame && <RaceOverlay frame={raceOverlayFrame} />}
 
@@ -246,6 +266,19 @@ export function TrackViewer({ mode, isTracking, metric }: TrackViewerProps) {
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function LegendRow({ color, label, shape }: { color: string; label: string; shape: 'dot' | 'line' }) {
+  return (
+    <div className="flex items-center gap-2">
+      {shape === 'dot' ? (
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      ) : (
+        <span className="w-3 h-[2px] shrink-0" style={{ backgroundColor: color }} />
+      )}
+      <span className="text-[10px] font-mono text-text-muted">{label}</span>
     </div>
   );
 }

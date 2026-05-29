@@ -6,8 +6,10 @@ interface TrackControlsProps {
   mode: TrackMode;
   isTracking: boolean;
   metric: PathColorMetric;
+  showValidation: boolean;
   onSetMode: (m: TrackMode) => void;
   onSetMetric: (m: PathColorMetric) => void;
+  onToggleValidation: () => void;
   onStart: () => void;
   onStop: () => void;
   onOpen: () => void;
@@ -15,8 +17,8 @@ interface TrackControlsProps {
 }
 
 export function TrackControls({
-  mode, isTracking, metric,
-  onSetMode, onSetMetric,
+  mode, isTracking, metric, showValidation,
+  onSetMode, onSetMetric, onToggleValidation,
   onStart, onStop, onOpen, onClosePlayback,
 }: TrackControlsProps) {
   const playbackSession = usePlaybackStore((s) => s.session);
@@ -42,6 +44,10 @@ export function TrackControls({
             <MetricPicker value={metric} onChange={onSetMetric} />
           </div>
 
+          <div className="w-px h-4 bg-border-muted" />
+
+          <ValidationToggle value={showValidation} onChange={onToggleValidation} />
+
           <div className="flex-1" />
           <button
             onClick={onClosePlayback}
@@ -65,6 +71,10 @@ export function TrackControls({
             <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim">COLOR</span>
             <MetricPicker value={metric} onChange={onSetMetric} />
           </div>
+
+          <div className="w-px h-4 bg-border-muted" />
+
+          <ValidationToggle value={showValidation} onChange={onToggleValidation} />
 
           <div className="flex-1" />
 
@@ -114,6 +124,22 @@ function ModeToggle({ value, onChange, disabled }: { value: TrackMode; onChange:
         </button>
       ))}
     </div>
+  );
+}
+
+function ValidationToggle({ value, onChange }: { value: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      title="Highlight collision, off-road, and airborne sections on the path"
+      className={`h-7 px-3 rounded border text-[10px] font-mono uppercase tracking-wider transition-colors ${
+        value
+          ? 'border-[#ff8c00]/60 bg-[#ff8c00]/15 text-[#ff8c00]'
+          : 'border-border-muted bg-bg-input text-text-dim hover:text-text-muted'
+      }`}
+    >
+      Validation
+    </button>
   );
 }
 

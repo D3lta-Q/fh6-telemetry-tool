@@ -32,6 +32,14 @@ export interface TrackFrame {
   rumble: boolean;
   /** True if any wheel is in a puddle (depth > 0.02 m). */
   puddle: boolean;
+  /**
+   * Validation flags, denormalised at record time so the Track tab can overlay
+   * them without the raw packets. Optional for backwards-compatibility with
+   * older .fzt files (treated as false when absent).
+   */
+  offRoad?: boolean;
+  airborne?: boolean;
+  collision?: boolean;
   /** Current race position (1-based). 0 if not in race. */
   racePos: number;
   lapNumber: number;
