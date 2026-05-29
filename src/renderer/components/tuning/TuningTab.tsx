@@ -24,6 +24,7 @@ import { SegmentedControl } from '../ui';
 import { useTuningStore } from '../../store/tuningStore';
 import { CarPicker } from './CarPicker';
 import { ResultsPanel } from './ResultsPanel';
+import { RefinementPanel } from './RefinementPanel';
 
 interface ManualGeometry {
   make: string;
@@ -81,6 +82,8 @@ export function TuningTab() {
 
   const [gearingEnabled, setGearingEnabled] = useState(false);
   const [gearing, setGearing] = useState({ ...EMPTY_GEARING });
+
+  const [resultsView, setResultsView] = useState<'calculated' | 'refinement'>('calculated');
 
   const onSelectCar = (car: Car) => {
     setSelectedCar(car);
@@ -334,7 +337,7 @@ export function TuningTab() {
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         {result ? (
           <>
-            <div className="mb-4 flex items-baseline justify-between">
+            <div className="mb-3 flex items-baseline justify-between">
               <h2 className="text-sm font-medium text-text">
                 {selectedCar ? carName(selectedCar) : 'Custom Tune'}
               </h2>
@@ -342,7 +345,30 @@ export function TuningTab() {
                 {surface.name} · {TUNE_TYPE_LABELS.find((t) => t.value === tuneType)?.label}
               </span>
             </div>
-            <ResultsPanel result={result} units={units} />
+
+            <div className="mb-4">
+              <SegmentedControl
+                value={resultsView}
+                options={[
+                  { value: 'calculated', label: 'Calculated Tune' },
+                  { value: 'refinement', label: 'Tune Refinement' },
+                ]}
+                onChange={(v) => setResultsView(v as 'calculated' | 'refinement')}
+              />
+            </div>
+
+            {/* Both mount so the refinement working copy survives view switches. */}
+            <div className={resultsView === 'calculated' ? '' : 'hidden'}>
+              <ResultsPanel result={result} units={units} />
+            </div>
+            <div className={resultsView === 'refinement' ? '' : 'hidden'}>
+              <RefinementPanel
+                result={result}
+                units={units}
+                tuneType={tuneType}
+                drivetrain={drivetrain}
+              />
+            </div>
           </>
         ) : (
           <div className="h-full flex items-center justify-center">
