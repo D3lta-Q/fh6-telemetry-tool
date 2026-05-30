@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TuneResult } from '@shared/tuning';
 import {
   springFromLbIn,
@@ -33,14 +33,20 @@ export function RefinementPanel({
   units,
   tuneType,
   drivetrain,
+  onBaseParamsChange,
+  loadedParams,
+  loadVersion,
 }: {
   result: TuneResult;
   units: TuningUnits;
   tuneType: TuneType;
   drivetrain: Drivetrain;
+  onBaseParamsChange?: (params: TuneParam[]) => void;
+  loadedParams?: TuneParam[];
+  loadVersion?: number;
 }) {
   // Working copy. Initialised once from the calculated tune; only re-synced when
-  // the user presses Reset (so input tweaks don't wipe accepted refinements).
+  // the user presses Reset or a saved tune is loaded.
   const [baseParams, setBaseParams] = useState<TuneParam[]>(() => flattenTune(result));
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [analysis, setAnalysis] = useState<TestLapResult | null>(null);
@@ -55,6 +61,24 @@ export function RefinementPanel({
       setSeeded(true);
     }
   }, [result, seeded]);
+
+  // When a saved tune is loaded, reset to the loaded params.
+  const prevLoadVersion = useRef(loadVersion ?? 0);
+  useEffect(() => {
+    if (loadVersion !== undefined && loadVersion !== prevLoadVersion.current) {
+      prevLoadVersion.current = loadVersion;
+      if (loadedParams && loadedParams.length > 0) {
+        setBaseParams(loadedParams);
+        setSuggestions(null);
+        setAnalysis(null);
+      }
+    }
+  }, [loadVersion, loadedParams]);
+
+  // Notify parent whenever the working copy changes.
+  useEffect(() => {
+    onBaseParamsChange?.(baseParams);
+  }, [baseParams, onBaseParamsChange]);
 
   const suggestionFor = (id: string) => suggestions?.find((s) => s.paramId === id);
 

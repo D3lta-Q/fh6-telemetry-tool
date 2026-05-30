@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
 import type { AppSettings, ListenerStatus, RecordingStatus, TelemetryData } from '@shared/telemetry';
 import type { FztSession } from '@shared/track';
+import type { SavedTune } from '@shared/tuning/savedTune';
 
 /**
  * The API surface that contextBridge exposes to the renderer.
@@ -24,6 +25,10 @@ export interface ForzaApi {
   popOutTab: (tab: string) => Promise<void>;
   /** Get the tab this window should show (for popped-out windows). */
   getWindowTab: () => string | null;
+  saveTune: (tune: SavedTune) => Promise<void>;
+  listTunes: () => Promise<SavedTune[]>;
+  loadTune: (id: string) => Promise<SavedTune | null>;
+  deleteTune: (id: string) => Promise<void>;
 }
 
 const api: ForzaApi = {
@@ -51,6 +56,10 @@ const api: ForzaApi = {
   saveTrackSession: (session) => ipcRenderer.invoke(IPC.SAVE_TRACK_SESSION, session),
   openTrackSession: () => ipcRenderer.invoke(IPC.OPEN_TRACK_SESSION),
   popOutTab: (tab) => ipcRenderer.invoke(IPC.POP_OUT_TAB, tab),
+  saveTune: (tune) => ipcRenderer.invoke(IPC.SAVE_TUNE, tune),
+  listTunes: () => ipcRenderer.invoke(IPC.LIST_TUNES),
+  loadTune: (id) => ipcRenderer.invoke(IPC.LOAD_TUNE, id),
+  deleteTune: (id) => ipcRenderer.invoke(IPC.DELETE_TUNE, id),
   getWindowTab() {
     // In Electron preload, `location` is available via the global scope
     const params = new URLSearchParams((globalThis as any).location?.search ?? '');

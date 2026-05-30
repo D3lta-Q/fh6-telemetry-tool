@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { IPC } from '@shared/ipc';
 import type { AppSettings } from '@shared/telemetry';
 import type { FztSession, FztSessionAny } from '@shared/track';
+import type { SavedTune } from '@shared/tuning/savedTune';
 import { ForzaUdpServer } from './udpServer';
 import { getSettings, setSettings } from './settings';
 import { Recorder } from './recorder';
@@ -272,6 +273,48 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.POP_OUT_TAB, (_event, tab: string) => {
     createChildWindow(tab);
+  });
+
+  const tunesDir = () => join(app.getPath('userData'), 'tunes');
+
+  ipcMain.handle(IPC.SAVE_TUNE, async (_event, tune: SavedTune) => {
+    const dir = tunesDir();
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${tune.id}.json`), JSON.stringify(tune));
+  });
+
+  ipcMain.handle(IPC.LIST_TUNES, async () => {
+    const dir = tunesDir();
+    await mkdir(dir, { recursive: true });
+    const files = await readdir(dir);
+    const tunes: SavedTune[] = [];
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const raw = await readFile(join(dir, file), 'utf-8');
+        tunes.push(JSON.parse(raw) as SavedTune);
+      } catch {
+        // Skip corrupt files.
+      }
+    }
+    return tunes.sort((a, b) => b.savedAt - a.savedAt);
+  });
+
+  ipcMain.handle(IPC.LOAD_TUNE, async (_event, id: string) => {
+    try {
+      const raw = await readFile(join(tunesDir(), `${id}.json`), 'utf-8');
+      return JSON.parse(raw) as SavedTune;
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle(IPC.DELETE_TUNE, async (_event, id: string) => {
+    try {
+      await unlink(join(tunesDir(), `${id}.json`));
+    } catch {
+      // File may already be gone.
+    }
   });
 }
 

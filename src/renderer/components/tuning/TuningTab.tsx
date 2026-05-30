@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   calculateTune,
   carName,
@@ -20,11 +20,14 @@ import {
   type TuneRequest,
   type GearingRequest,
 } from '@shared/tuning';
+import type { TuneParam } from '@shared/analysis';
+import type { SavedTune } from '@shared/tuning/savedTune';
 import { SegmentedControl } from '../ui';
 import { useTuningStore } from '../../store/tuningStore';
 import { CarPicker } from './CarPicker';
 import { ResultsPanel } from './ResultsPanel';
 import { RefinementPanel } from './RefinementPanel';
+import { SavedTunePicker } from './SavedTunePicker';
 
 interface ManualGeometry {
   make: string;
@@ -84,6 +87,89 @@ export function TuningTab() {
   const [gearing, setGearing] = useState({ ...EMPTY_GEARING });
 
   const [resultsView, setResultsView] = useState<'calculated' | 'refinement'>('calculated');
+
+  // ---- Save / Load tunes -------------------------------------------------------
+  const refinementParamsRef = useRef<TuneParam[]>([]);
+  const handleRefinementParamsChange = useCallback((params: TuneParam[]) => {
+    refinementParamsRef.current = params;
+  }, []);
+
+  const [savedTunes, setSavedTunes] = useState<SavedTune[]>([]);
+
+  useEffect(() => {
+    void window.forza.listTunes().then(setSavedTunes);
+  }, []);
+
+  const [saveState, setSaveState] = useState<'idle' | 'naming'>('idle');
+  const [saveName, setSaveName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Incremented each time a tune is loaded, triggering RefinementPanel reset.
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [loadedParams, setLoadedParams] = useState<TuneParam[] | undefined>(undefined);
+
+  const derivedVehicleName = (): string => {
+    if (selectedCar) return carName(selectedCar);
+    if (manualMode && (manual.make || manual.model)) {
+      return [manual.year, manual.make, manual.model].filter(Boolean).join(' ').trim();
+    }
+    return 'Custom Vehicle';
+  };
+
+  const handleSaveClick = () => {
+    setSaveState('naming');
+    setSaveName('');
+  };
+
+  const handleSaveConfirm = async () => {
+    if (!saveName.trim()) return;
+    setSaving(true);
+    const id = String(Date.now());
+    const tune: SavedTune = {
+      id,
+      name: saveName.trim(),
+      vehicleName: derivedVehicleName(),
+      savedAt: Date.now(),
+      selectedCar,
+      manualMode,
+      manual,
+      weightKg,
+      percentFront,
+      performanceIndex,
+      drivetrain,
+      surfaceId,
+      tuneType,
+      gearingEnabled,
+      gearing,
+      refinementParams: refinementParamsRef.current,
+    };
+    await window.forza.saveTune(tune);
+    setSavedTunes((prev) => [tune, ...prev]);
+    setSaveState('idle');
+    setSaving(false);
+  };
+
+  const handleLoadTune = (tune: SavedTune) => {
+    setSelectedCar(tune.selectedCar);
+    setManualMode(tune.manualMode);
+    setManual(tune.manual as ManualGeometry);
+    setWeightKg(tune.weightKg);
+    setPercentFront(tune.percentFront);
+    setPerformanceIndex(tune.performanceIndex);
+    setDrivetrain(tune.drivetrain as Drivetrain);
+    setSurfaceId(tune.surfaceId);
+    setTuneType(tune.tuneType as TuneType);
+    setGearingEnabled(tune.gearingEnabled);
+    setGearing(tune.gearing as typeof gearing);
+    setLoadedParams(tune.refinementParams);
+    setLoadVersion((v) => v + 1);
+  };
+
+  const handleDeleteTune = async (id: string) => {
+    await window.forza.deleteTune(id);
+    setSavedTunes((prev) => prev.filter((t) => t.id !== id));
+  };
+  // ---- End save / load ---------------------------------------------------------
 
   const onSelectCar = (car: Car) => {
     setSelectedCar(car);
@@ -337,13 +423,60 @@ export function TuningTab() {
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         {result ? (
           <>
-            <div className="mb-3 flex items-baseline justify-between">
-              <h2 className="text-sm font-medium text-text">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 className="text-sm font-medium text-text shrink-0">
                 {selectedCar ? carName(selectedCar) : 'Custom Tune'}
               </h2>
-              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim truncate">
                 {surface.name} · {TUNE_TYPE_LABELS.find((t) => t.value === tuneType)?.label}
               </span>
+              <div className="flex items-center gap-2 ml-auto shrink-0">
+                {saveState === 'naming' ? (
+                  <>
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Tune name…"
+                      value={saveName}
+                      onChange={(e) => setSaveName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleSaveConfirm();
+                        if (e.key === 'Escape') setSaveState('idle');
+                      }}
+                      className="h-7 w-36 px-2 rounded border border-border-muted bg-bg-input font-mono text-xs text-text focus:outline-none focus:border-border-accent"
+                    />
+                    <button
+                      onClick={() => void handleSaveConfirm()}
+                      disabled={!saveName.trim() || saving}
+                      className="h-7 px-2.5 rounded border border-accent-lime/40 bg-accent-lime/10 text-[10px] font-mono uppercase tracking-wider text-accent-lime hover:bg-accent-lime/20 transition-colors disabled:opacity-40"
+                    >
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setSaveState('idle')}
+                      className="h-7 px-2.5 rounded border border-border-muted bg-bg-input text-[10px] font-mono uppercase tracking-wider text-text-dim hover:text-text transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleSaveClick}
+                    className="h-7 px-2.5 rounded border border-border-muted bg-bg-input text-[10px] font-mono uppercase tracking-wider text-text-muted hover:text-text hover:border-border transition-colors"
+                  >
+                    Save Tune
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Saved tune picker */}
+            <div className="mb-3">
+              <SavedTunePicker
+                tunes={savedTunes}
+                onLoad={handleLoadTune}
+                onDelete={(id) => void handleDeleteTune(id)}
+              />
             </div>
 
             <div className="mb-4">
@@ -367,6 +500,9 @@ export function TuningTab() {
                 units={units}
                 tuneType={tuneType}
                 drivetrain={drivetrain}
+                onBaseParamsChange={handleRefinementParamsChange}
+                loadedParams={loadedParams}
+                loadVersion={loadVersion}
               />
             </div>
           </>

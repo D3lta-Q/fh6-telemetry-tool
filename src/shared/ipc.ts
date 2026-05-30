@@ -29,6 +29,14 @@ export const IPC = {
   POP_OUT_TAB: 'window:pop-out',
   /** Main -> Renderer. Tells a popped-out window which tab it should show. Payload: string. */
   WINDOW_TAB: 'window:tab',
+  /** Renderer -> Main (invoke). Saves a tune to the tunes folder. Payload: SavedTune. Returns void. */
+  SAVE_TUNE: 'tune:save',
+  /** Renderer -> Main (invoke). Lists all saved tunes. Returns SavedTune[]. */
+  LIST_TUNES: 'tune:list',
+  /** Renderer -> Main (invoke). Loads a single tune by id. Returns SavedTune | null. */
+  LOAD_TUNE: 'tune:load',
+  /** Renderer -> Main (invoke). Deletes a saved tune by id. Returns void. */
+  DELETE_TUNE: 'tune:delete',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
