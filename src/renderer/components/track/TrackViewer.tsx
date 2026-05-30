@@ -1,9 +1,10 @@
-import { Suspense, useRef, useEffect, useState } from 'react';
+import { Suspense, useRef, useEffect, useMemo, useState } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useTrackStore } from '../../store/trackStore';
 import { usePlaybackStore } from '../../store/playbackStore';
+import { useEffectiveTimeWindow } from '../../hooks/useEffectiveTimeWindow';
 import { CarModel } from './CarModel';
 import { TrackPath } from './TrackPath';
 import { ValidationOverlay, VALIDATION_COLORS } from './ValidationOverlay';
@@ -85,14 +86,17 @@ interface SceneProps {
   fitTrigger: number;
   followCar: boolean;
   showValidation: boolean;
+  /** Windowed frames for path/overlay display; may be a time-sliced subset of the full store frames. */
+  displayFrames: TrackFrame[];
 }
 
-function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar, showValidation }: SceneProps) {
+function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar, showValidation, displayFrames }: SceneProps) {
   const frames = useTrackStore((s) => s.frames);
   const laps = useTrackStore((s) => s.laps);
   const positionChanges = useTrackStore((s) => s.positionChanges);
   const liveFrame = useTrackStore((s) => s.liveFrame);
 
+  // allFrames is used for camera fitting (full extent), displayFrames for path rendering.
   const allFrames = isPlayback && session ? session.frames : frames;
   const currentFrame = isPlayback && session ? (session.frames[frameIndex] ?? null) : liveFrame;
 
@@ -140,6 +144,9 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
     );
   }
 
+  // Live mode: use displayFrames (time-windowed) for path rendering,
+  // full frames for lap marker positions and camera fitting.
+  const isWindowed = displayFrames !== frames;
   return (
     <>
       <CameraAutoFrame active={isTracking && frames.length === 1} />
@@ -147,11 +154,11 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
       <CameraFollow enabled={followCar} frame={currentFrame} />
       {commonLights}
       {grid}
-      {(isTracking || frames.length > 0) && (
-        <TrackPath frames={frames} metric={metric} />
+      {(isTracking || displayFrames.length > 0) && (
+        <TrackPath frames={displayFrames} metric={metric} rebuildEveryFrame={isWindowed} />
       )}
-      {showValidation && (isTracking || frames.length > 0) && (
-        <ValidationOverlay frames={frames} />
+      {showValidation && (isTracking || displayFrames.length > 0) && (
+        <ValidationOverlay frames={displayFrames} rebuildEveryFrame={isWindowed} />
       )}
       <CarModel />
       {mode === 'race' && (
@@ -191,6 +198,19 @@ export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackV
   const [fitTrigger, setFitTrigger] = useState(0);
   const [followCar, setFollowCar] = useState(false);
 
+  // Apply the global time window to the live path.
+  // During recording the effective window expands to cover the full session,
+  // so the complete recorded path remains visible. For pure tracking the
+  // window trims the oldest frames as new ones arrive.
+  const effectiveWindowSec = useEffectiveTimeWindow();
+  const displayFrames = useMemo<TrackFrame[]>(() => {
+    if (isPlayback || !isTracking) return frames;
+    const cutoffMs = Date.now() - effectiveWindowSec * 1000;
+    let start = 0;
+    while (start < frames.length && frames[start].t < cutoffMs) start++;
+    return start === 0 ? frames : frames.slice(start);
+  }, [frames, isTracking, isPlayback, effectiveWindowSec]);
+
   return (
     <div className="relative flex-1 min-h-0 bg-[#050508]">
       <Canvas
@@ -211,6 +231,7 @@ export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackV
             fitTrigger={fitTrigger}
             followCar={followCar}
             showValidation={showValidation}
+            displayFrames={displayFrames}
           />
           <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         </Suspense>
@@ -262,7 +283,7 @@ export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackV
       {!isTracking && !isPlayback && frames.length === 0 && !liveFrame && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-text-dim">
-            Press Start to begin recording a path
+            Enable Tracking or press Record to start drawing the path
           </span>
         </div>
       )}

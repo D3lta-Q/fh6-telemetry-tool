@@ -36,6 +36,14 @@ export function useTelemetryBridge(): void {
     const offStatus = window.forza.onListenerStatus((status) => setStatus(status));
     const offRecording = window.forza.onRecordingStatus((status) => {
       setRecording(status.isRecording, status.startedAt);
+      // Recording always drives 3D tracking: start recording → start tracking,
+      // stop recording → stop tracking.
+      const trackStore = useTrackStore.getState();
+      if (status.isRecording) {
+        trackStore.startTracking(trackStore.mode);
+      } else {
+        trackStore.stopTracking();
+      }
     });
 
     return () => {

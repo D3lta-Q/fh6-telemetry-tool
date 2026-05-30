@@ -86,22 +86,17 @@ export function TrackControls({
             Open .fzt
           </button>
 
-          {/* Start / Stop */}
-          {isTracking ? (
-            <button
-              onClick={onStop}
-              className="h-7 px-3 rounded border border-accent-red/60 bg-accent-red/15 text-[10px] font-mono uppercase tracking-wider text-accent-red hover:bg-accent-red/25 transition-colors"
-            >
-              ■ Stop &amp; Save
-            </button>
-          ) : (
-            <button
-              onClick={onStart}
-              className="h-7 px-3 rounded border border-border-muted bg-bg-input text-[10px] font-mono uppercase tracking-wider text-text-muted hover:text-text hover:border-border transition-colors"
-            >
-              ● Start
-            </button>
-          )}
+          {/* Tracking toggle */}
+          <button
+            onClick={isTracking ? onStop : onStart}
+            className={`h-7 px-3 rounded border text-[10px] font-mono uppercase tracking-wider transition-colors ${
+              isTracking
+                ? 'border-[#00d4ff]/60 bg-[#00d4ff]/15 text-[#00d4ff]'
+                : 'border-border-muted bg-bg-input text-text-dim hover:text-text-muted'
+            }`}
+          >
+            Tracking: {isTracking ? 'On' : 'Off'}
+          </button>
         </>
       )}
     </div>

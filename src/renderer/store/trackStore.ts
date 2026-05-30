@@ -46,6 +46,7 @@ interface TrackStoreState {
   // --- Actions ---
   startTracking: (mode: TrackMode) => void;
   stopTracking: () => void;
+  setMode: (mode: TrackMode) => void;
   pushTelemetry: (data: TelemetryData) => void;
   setColorMetric: (metric: PathColorMetric) => void;
 }
@@ -85,6 +86,10 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
 
   stopTracking() {
     set({ isTracking: false, origin: null });
+  },
+
+  setMode(mode) {
+    set({ mode });
   },
 
   pushTelemetry(data) {

@@ -72,9 +72,11 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
     }
   }, [metric]);
 
-  // Reset all draw ranges when frames are cleared (new recording started).
+  // Reset draw ranges when frames are cleared (new recording/tracking started).
+  // Skip when rebuildEveryFrame is active — useFrame always rebuilds from scratch,
+  // so clearing geometry here would cause a one-frame flash.
   useEffect(() => {
-    if (frames.length < builtUpTo.current) {
+    if (!rebuildEveryFrame && frames.length < builtUpTo.current) {
       builtUpTo.current = 0;
       maxSpeedRef.current = 1;
       mainGeo.setDrawRange(0, 0);
@@ -83,7 +85,7 @@ export function TrackPath({ frames, metric, rebuildEveryFrame = false }: TrackPa
       puddleBuilt.current = 0;
       puddleGeo.setDrawRange(0, 0);
     }
-  }, [frames.length, mainGeo, rumbleGeo, puddleGeo]);
+  }, [frames.length, rebuildEveryFrame, mainGeo, rumbleGeo, puddleGeo]);
 
   useEffect(() => {
     if (rebuildEveryFrame) {

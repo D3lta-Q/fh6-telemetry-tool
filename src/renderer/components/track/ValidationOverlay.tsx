@@ -53,9 +53,10 @@ export function ValidationOverlay({ frames, rebuildEveryFrame = false }: Props) 
   const airborneBuilt = useRef(0);
   const collisionBuilt = useRef(0);
 
-  // Reset when frames are cleared (new recording).
+  // Reset when frames are cleared (new recording/tracking started).
+  // Skip when rebuildEveryFrame is active to avoid a one-frame geometry flash.
   useEffect(() => {
-    if (frames.length < offRoadBuilt.current) {
+    if (!rebuildEveryFrame && frames.length < offRoadBuilt.current) {
       offRoadBuilt.current = 0;
       airborneBuilt.current = 0;
       collisionBuilt.current = 0;
@@ -63,7 +64,7 @@ export function ValidationOverlay({ frames, rebuildEveryFrame = false }: Props) 
       airborneGeo.setDrawRange(0, 0);
       collisionGeo.setDrawRange(0, 0);
     }
-  }, [frames.length, offRoadGeo, airborneGeo, collisionGeo]);
+  }, [frames.length, rebuildEveryFrame, offRoadGeo, airborneGeo, collisionGeo]);
 
   useFrame(() => {
     updateLineOverlay(offRoadGeo, offRoadBuilt, frames, 'offRoad', rebuildEveryFrame);
