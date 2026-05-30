@@ -223,7 +223,7 @@ function Row({
   return (
     <div
       className="flex items-center gap-2 px-3 py-[3px]"
-      title={suggestion ? suggestion.reason : undefined}
+      title={suggestion ? `${suggestion.reason} (${suggestion.confidence} confidence)` : undefined}
     >
       <span className="text-[11px] text-text-muted w-24 shrink-0 truncate">{param.label}</span>
       <div className="relative flex-1 h-4 flex items-center">
@@ -265,7 +265,7 @@ function AnalysisSummary({
 }) {
   const { stats } = analysis;
   const excluded =
-    stats.excludedCollision + stats.excludedAirborne + stats.excludedOffRoad;
+    stats.excludedCollision + stats.excludedAirborne + stats.excludedOffRoad + stats.excludedHandbrake;
   return (
     <div className="px-3 py-2 rounded border border-border-muted bg-bg-input/40 flex flex-col gap-1.5">
       {!analysis.ok && <p className="text-[11px] font-mono text-accent-red">{analysis.reason}</p>}
@@ -275,10 +275,10 @@ function AnalysisSummary({
         </p>
       ))}
       <p className="text-[10px] font-mono text-text-dim pt-1">
-        {stats.validFrames}/{stats.totalFrames} frames analysed · {stats.corneringFrames} cornering ·{' '}
-        {stats.brakingFrames} braking
+        {stats.validFrames}/{stats.totalFrames} frames · {stats.corners} corners · {stats.corneringFrames} mid ·{' '}
+        {stats.brakingFrames} braking · {stats.exitFrames} exit
         {excluded > 0 &&
-          ` · excluded ${stats.excludedCollision} collision / ${stats.excludedAirborne} airborne / ${stats.excludedOffRoad} off-road`}
+          ` · excluded ${stats.excludedCollision} collision / ${stats.excludedAirborne} airborne / ${stats.excludedHandbrake} handbrake / ${stats.excludedOffRoad} off-road`}
       </p>
       {hasSuggestions && (
         <p className="text-[10px] font-mono text-accent-lime pt-0.5">
