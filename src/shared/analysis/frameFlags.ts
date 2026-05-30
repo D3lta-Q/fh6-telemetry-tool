@@ -17,8 +17,8 @@
 import type { TelemetryData } from '../telemetry';
 
 export const G = 9.807; // m/s² per g
-export const COLLISION_G = 2.6;
-export const OFFROAD_RUMBLE = 0.15;
+export const COLLISION_G = 4.5;
+export const OFFROAD_RUMBLE = 0.10;
 export const AIRBORNE_TRAVEL = 0.05;
 export const BRAKE_NOT_APPLIED = 0.3; // fraction (0..1)
 
