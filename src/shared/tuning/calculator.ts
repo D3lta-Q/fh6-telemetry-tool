@@ -111,6 +111,8 @@ export class TuneCalculator {
   private centerDefault = 65;
   private centerUpper = 70;
   private adjustmentScale = 1.33;
+  /** Rally spring/damper natural-frequency margin (Se.W_MARGIN). */
+  private readonly W_MARGIN = 0.01;
 
   // Derived weight quantities.
   private E5 = 0; // total mass, kg
@@ -128,6 +130,12 @@ export class TuneCalculator {
 
   calculate(): TuneResult {
     this.initialize();
+    // Rally is a distinct calculator path in ForzaTune (the `Se` subclass): a
+    // pre-filter seeds rally-specific offsets, several steps use a different
+    // (softer, natural-frequency-limited) model, and a post-filter trims tyres,
+    // caster and brake bias.
+    const rally = this.req.tuneType === TuneType.Rally;
+    if (rally) this.rallyPreFilter();
     this.stepTires();
     this.stepAlignment();
     this.stepSprings();
@@ -137,7 +145,17 @@ export class TuneCalculator {
     this.stepDifferentials();
     this.stepGearing();
     this.stepAero();
+    if (rally) this.rallyPostFilter();
     return this.result as TuneResult;
+  }
+
+  private get isRally(): boolean {
+    return this.req.tuneType === TuneType.Rally;
+  }
+
+  /** Rally treats the Cross-Country / off-road surface specially. */
+  private get isRallyOffRoad(): boolean {
+    return this.req.surface.id.includes('off-road');
   }
 
   // ---- helpers --------------------------------------------------------------
@@ -253,6 +271,10 @@ export class TuneCalculator {
   }
 
   private stepSprings(): void {
+    if (this.isRally) {
+      this.stepSpringsRally();
+      return;
+    }
     const baseF = this.getBaseF();
     const stiffness = this.req.surface.stiffness;
     const rideStiffness = TUNE_MODIFIER_DEFAULT;
@@ -277,6 +299,210 @@ export class TuneCalculator {
     this.result.springs = { front, rear, rideHeight };
   }
 
+  // ---- rally tune path (ForzaTune `Se` subclass) ---------------------------
+
+  /**
+   * Rally pre-filter (Se.preFilter + Se.step07Setup, FH5 branch).
+   * Seeds the ride-height bump (`o4`), the ARB multiplier (`o2`), and the
+   * rally-specific differential ranges before the steps run.
+   */
+  private rallyPreFilter(): void {
+    this.o4 = 3;
+    this.o2 = 0.25;
+    if (this.isRallyOffRoad) {
+      this.o4 = 6;
+      this.o2 = 0.2;
+    }
+    // Differential working ranges (Se.step07Setup).
+    this.fAccelLower = 10;
+    this.fAccelDefault = 25;
+    this.fAccelUpper = 40;
+    this.fDecelLower = 0;
+    this.fDecelDefault = 5;
+    this.fDecelUpper = 10;
+    this.rAccelLower = 40;
+    this.rAccelDefault = 60;
+    this.rAccelUpper = 80;
+    this.rDecelLower = 20;
+    this.rDecelDefault = 30;
+    this.rDecelUpper = 40;
+    if (this.req.drivetrain === Drivetrain.RWD) {
+      this.rDecelLower = 5;
+      this.rDecelDefault = 10;
+      this.rDecelUpper = 15;
+    }
+    this.centerLower = 50;
+    this.centerDefault = 62;
+    this.centerUpper = 75;
+  }
+
+  /**
+   * Rally post-filter (Se.postFilter, FH5 branch).
+   * Trims tyre pressures, overrides caster and brake bias, and (off-road only)
+   * softens camber.
+   */
+  private rallyPostFilter(): void {
+    const r = this.result;
+    let tf = r.tires!.front.englishValueAsNumber * 0.93;
+    let tr = r.tires!.rear.englishValueAsNumber * 0.93;
+    let caster = this.req.drivetrain === Drivetrain.RWD ? 6.3 : 5.7;
+    let bias = 52;
+
+    if (this.isRallyOffRoad) {
+      tf *= 0.94;
+      tr *= 0.94;
+      caster = 5.5;
+      bias = 50;
+      let fc = r.alignment!.frontCamber.englishValueAsNumber * 0.95;
+      let rc = r.alignment!.rearCamber.englishValueAsNumber * 0.95;
+      if (fc > -0.5) fc = -0.5;
+      if (rc > -0.5) rc = -0.5;
+      r.alignment!.frontCamber = new CamberValue(fc, false);
+      r.alignment!.rearCamber = new CamberValue(rc, false);
+    }
+
+    r.tires = { front: new PressureValue(tf, false), rear: new PressureValue(tr, false) };
+    r.alignment!.caster = new CasterValue(caster, false);
+    r.brakes = new BrakeValue(bias); // force stays 100 (BrakeValue default)
+  }
+
+  /** Rally spring/damper natural-frequency limit (Se.getSpringDamperLimit, FH5). */
+  private rallySpringLimit(): { minW: number; maxW: number } {
+    // FH5 generic limit. (ForzaTune additionally has a per-car override table
+    // keyed by its internal car id; the generic limit covers the vast majority
+    // of cars including this one.)
+    return { minW: 1.802, maxW: 3.18 };
+  }
+
+  /** Rally natural-frequency target (Se.getBaseF). */
+  private rallyBaseF(): number {
+    const { minW } = this.rallySpringLimit();
+    let e = 1.05 + 2 * this.W_MARGIN;
+    if (this.isRallyOffRoad) e = 1 + this.W_MARGIN / 2;
+    const hi = 1.125;
+    const lo = 0.95;
+    let a = this.mapF(this.req.geometry.height, 0.76, 2.3, hi, lo);
+    if (a < lo) a = lo;
+    else if (a > hi) a = hi;
+    return minW * e * a;
+  }
+
+  /** Rally springs + ride height (Se.step03). `mapRates` is identity here. */
+  private stepSpringsRally(): void {
+    const n = this.req.percentFront / 100;
+    const rideStiffness = TUNE_MODIFIER_DEFAULT;
+    let s = (this.rallyBaseF() * rideStiffness) / 100 * this.o1;
+
+    const { minW: l, maxW: u } = this.rallySpringLimit();
+    const f = Math.abs(0.5 - n);
+    const h = u * (1 - f);
+    const c = l * (1 + f);
+    if (s > h) s = h;
+    else if (s < c) s = c;
+
+    const d = 100 + 0.1 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3;
+    let g = (s * d) / 100 * this.p06;
+    let m = (s * (100 - (d - 100))) / 100 * this.p07;
+    if (g > u || m > u) {
+      const V = g - u;
+      const U = m - u;
+      const k = V > U ? 1 - V / g : 1 - U / m;
+      g *= k;
+      m *= k;
+    } else if (g < l || m < l) {
+      const V = l - g;
+      const U = l - m;
+      const k = V > U ? 1 + V / g : 1 + U / m;
+      g *= k;
+      m *= k;
+    }
+
+    const R = 2 * g * Math.PI;
+    const F = 2 * m * Math.PI;
+    this.E16 = 0.5 * this.E14 * Math.pow(R, 2);
+    this.E17 = 0.5 * this.E15 * Math.pow(F, 2);
+
+    const hConv = 0.00101972;
+    const frontRate = this.E16 * hConv;
+    const rearRate = this.E17 * hConv;
+    const frontMin = 0.05116 * n * Math.pow(l, 2);
+    const rearMin = 0.05116 * (1 - n) * Math.pow(l, 2);
+    const sharedMax = 0.02558 * Math.pow(u, 2);
+
+    const front = new SpringValue(this.E5, frontRate, true, this.req.tuneType, frontMin, sharedMax);
+    const rear = new SpringValue(this.E5, rearRate, true, this.req.tuneType, rearMin, sharedMax);
+    const rhAdjust = Math.round((100 - rideStiffness) / 10);
+    const rideHeight = new RideHeightValue(this.req.surface.rideHeight + rhAdjust + this.o4, false);
+    this.result.springs = { front, rear, rideHeight };
+  }
+
+  /** Rally damping coefficient (Se.stepd). */
+  private rallyStepd(): number {
+    let n = 1;
+    if (!this.isRallyOffRoad) n *= 1.025;
+    n *= 1.12; // FH5
+    const lo = 0.38;
+    let s = this.mapF(this.req.weightKg, 3000, 6000, 1, lo);
+    if (s < lo) s = lo;
+    else if (s > 1) s = 1;
+    return n * s;
+  }
+
+  /** Rally damping (Se.step04). `mapRates04` is identity; bounds come from the limit. */
+  private stepDampingRally(): void {
+    const nFront = 2 * Math.sqrt(0.5 * this.E14 * this.E16);
+    const nRear = 2 * Math.sqrt(0.5 * this.E15 * this.E17);
+    const a = this.rallyStepd() * (1 + ((TUNE_MODIFIER_DEFAULT - 100) / 100) * 0.5);
+    const u = nFront * a * 0.00101972;
+    const fv = nRear * a * 0.00101972;
+
+    const rwd = this.req.drivetrain === Drivetrain.RWD;
+    let h = rwd ? 1.5 : 1.333;
+    let c = rwd ? 1.38 : 1.55;
+    let dd = this.isRallyOffRoad ? 2.75 : 2;
+    dd *= 1.62; // FH5
+    h *= dd;
+    c *= dd;
+
+    const g = h + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05);
+    const m = c - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08);
+    let bumpFront = u / (1 + g);
+    let bumpRear = fv / (1 + m);
+
+    // Bump floor (generic rally min = 1): scale both axles up by the larger need.
+    let scale = 0;
+    if (bumpFront < 1) scale = Math.max(scale, 1 / bumpFront);
+    if (bumpRear < 1) scale = Math.max(scale, 1 / bumpRear);
+    if (scale > 0) {
+      bumpFront *= scale;
+      bumpRear *= scale;
+    }
+
+    let reboundFront = u - bumpFront;
+    let reboundRear = fv - bumpRear;
+    const v = 0.618;
+    if (reboundFront / bumpFront < g * v || reboundRear / bumpRear < m * v) {
+      reboundFront = g * v * bumpFront;
+      reboundRear = m * v * bumpRear;
+    }
+
+    // Rebound ceiling (generic rally max = 20).
+    scale = 0;
+    if (reboundFront > 20) scale = Math.max(scale, 20 / reboundFront);
+    if (reboundRear > 20) scale = Math.max(scale, 20 / reboundRear);
+    if (scale > 0) {
+      reboundFront *= scale;
+      reboundRear *= scale;
+    }
+
+    this.result.damping = {
+      frontBump: new DampingValue(bumpFront, false, this.req.tuneType, DamperType.Bump),
+      rearBump: new DampingValue(bumpRear, false, this.req.tuneType, DamperType.Bump),
+      frontRebound: new DampingValue(reboundFront, false, this.req.tuneType, DamperType.Rebound),
+      rearRebound: new DampingValue(reboundRear, false, this.req.tuneType, DamperType.Rebound),
+    };
+  }
+
   // ---- step 4: damping ------------------------------------------------------
 
   private dampingRatio(): number {
@@ -295,6 +521,10 @@ export class TuneCalculator {
   }
 
   private stepDamping(): void {
+    if (this.isRally) {
+      this.stepDampingRally();
+      return;
+    }
     const dry = this.req.tuneType === TuneType.Dry;
     const drift = this.req.tuneType === TuneType.Drift;
     if (dry || drift) {
