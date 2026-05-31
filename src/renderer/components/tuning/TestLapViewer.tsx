@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useState, useEffect, useRef } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { Suspense, useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { TelemetryData } from '@shared/telemetry';
@@ -34,7 +34,25 @@ const CORNER_COLORS = {
 
 const LAP_PATH_COLORS = ['#00d4ff', '#a3e635', '#f97316', '#e879f9', '#34d399'];
 
-// ---- Data conversion -----------------------------------------------------------
+// ---- Overlay visibility ----------------------------------------------------
+
+type OverlayKey = 'offRoad' | 'airborne' | 'handbrake' | 'collision' | 'mid' | 'exit';
+
+interface OverlayVisibility {
+  offRoad: boolean;
+  airborne: boolean;
+  handbrake: boolean;
+  collision: boolean;
+  mid: boolean;
+  exit: boolean;
+}
+
+const ALL_VISIBLE: OverlayVisibility = {
+  offRoad: true, airborne: true, handbrake: true,
+  collision: true, mid: true, exit: true,
+};
+
+// ---- Data conversion -------------------------------------------------------
 
 function packetsToFrames(
   lp: TelemetryData[],
@@ -77,10 +95,10 @@ function splitByLap(packets: TelemetryData[]): TelemetryData[][] {
     if (p.lapNumber !== cur) { cur = p.lapNumber; groups.push([]); }
     groups[groups.length - 1].push(p);
   }
-  return groups.filter((g) => g.length > 60); // drop sub-second noise
+  return groups.filter((g) => g.length > 60);
 }
 
-// ---- Per-lap pre-computed data -------------------------------------------------
+// ---- Per-lap pre-computed data ---------------------------------------------
 
 interface LapData {
   index: number;
@@ -108,7 +126,7 @@ function buildLapData(
   });
 }
 
-// ---- Segment-point helpers -----------------------------------------------------
+// ---- Segment-point helpers -------------------------------------------------
 
 type Pt3 = [number, number, number];
 
@@ -144,19 +162,41 @@ function buildPhaseSegments(
   return pts;
 }
 
-// ---- 3D scene sub-components ---------------------------------------------------
+// ---- 3D scene sub-components -----------------------------------------------
 
-function LapLayer({ lap, color }: { lap: LapData; color: string }) {
-  const pathPts = useMemo(
-    () => lap.frames.map((f): Pt3 => [f.x, f.y + 0.1, f.z]),
-    [lap.frames],
+function LapLayer({
+  lap, color, lapStart, playbackIdx, visibility,
+}: {
+  lap: LapData;
+  color: string;
+  lapStart: number;
+  playbackIdx: number | null;
+  visibility: OverlayVisibility;
+}) {
+  // null = show all frames; otherwise slice to lap-relative position
+  const localMax = playbackIdx === null
+    ? lap.frames.length - 1
+    : playbackIdx - lapStart;
+
+  const visFrames  = useMemo(
+    () => localMax < 0 ? [] : lap.frames.slice(0, localMax + 1),
+    [lap.frames, localMax],
+  );
+  const visDerived = useMemo(
+    () => localMax < 0 ? [] : lap.derivedFrames.slice(0, localMax + 1),
+    [lap.derivedFrames, localMax],
+  );
+  const visCorners = useMemo(
+    () => lap.corners.filter((c) => c.apex <= (localMax < 0 ? -1 : localMax)),
+    [lap.corners, localMax],
   );
 
-  const offRoadPts   = useMemo(() => buildFlagSegments(lap.frames, 'offRoad',   0.30), [lap.frames]);
-  const airbornePts  = useMemo(() => buildFlagSegments(lap.frames, 'airborne',  0.45), [lap.frames]);
-  const handbrakePts = useMemo(() => buildFlagSegments(lap.frames, 'handbrake', 0.20), [lap.frames]);
-  const midPts       = useMemo(() => buildPhaseSegments(lap.frames, lap.derivedFrames, 'mid',  0.65), [lap]);
-  const exitPts      = useMemo(() => buildPhaseSegments(lap.frames, lap.derivedFrames, 'exit', 0.65), [lap]);
+  const pathPts      = useMemo(() => visFrames.map((f): Pt3 => [f.x, f.y + 0.1, f.z]), [visFrames]);
+  const offRoadPts   = useMemo(() => buildFlagSegments(visFrames, 'offRoad',   0.30), [visFrames]);
+  const airbornePts  = useMemo(() => buildFlagSegments(visFrames, 'airborne',  0.45), [visFrames]);
+  const handbrakePts = useMemo(() => buildFlagSegments(visFrames, 'handbrake', 0.20), [visFrames]);
+  const midPts       = useMemo(() => buildPhaseSegments(visFrames, visDerived, 'mid',  0.65), [visFrames, visDerived]);
+  const exitPts      = useMemo(() => buildPhaseSegments(visFrames, visDerived, 'exit', 0.65), [visFrames, visDerived]);
 
   // Collision points (imperative for per-frame dots)
   const colGeo = useMemo(() => new THREE.BufferGeometry(), []);
@@ -171,10 +211,12 @@ function LapLayer({ lap, color }: { lap: LapData; color: string }) {
   }, [colGeo, colMat]);
   useEffect(() => {
     const pos: number[] = [];
-    for (const f of lap.frames) if (f.collision) pos.push(f.x, f.y + 0.6, f.z);
+    for (const f of visFrames) if (f.collision) pos.push(f.x, f.y + 0.6, f.z);
     colGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-  }, [lap.frames, colGeo]);
+  }, [visFrames, colGeo]);
   useEffect(() => () => { colGeo.dispose(); colMat.dispose(); }, [colGeo, colMat]);
+
+  if (visFrames.length < 2) return null;
 
   return (
     <>
@@ -182,18 +224,18 @@ function LapLayer({ lap, color }: { lap: LapData; color: string }) {
       {pathPts.length >= 2 && <Line points={pathPts} color={color} lineWidth={1.5} />}
 
       {/* Validation overlays */}
-      {offRoadPts.length   >= 2 && <Line points={offRoadPts}   segments lineWidth={5} color={OVERLAY_COLORS.offRoad}   />}
-      {airbornePts.length  >= 2 && <Line points={airbornePts}  segments lineWidth={5} color={OVERLAY_COLORS.airborne}  />}
-      {handbrakePts.length >= 2 && <Line points={handbrakePts} segments lineWidth={5} color={OVERLAY_COLORS.handbrake} />}
-      <primitive object={colPts} />
+      {visibility.offRoad   && offRoadPts.length   >= 2 && <Line points={offRoadPts}   segments lineWidth={5} color={OVERLAY_COLORS.offRoad}   />}
+      {visibility.airborne  && airbornePts.length  >= 2 && <Line points={airbornePts}  segments lineWidth={5} color={OVERLAY_COLORS.airborne}  />}
+      {visibility.handbrake && handbrakePts.length >= 2 && <Line points={handbrakePts} segments lineWidth={5} color={OVERLAY_COLORS.handbrake} />}
+      {visibility.collision && <primitive object={colPts} />}
 
       {/* Corner phase overlays */}
-      {midPts.length  >= 2 && <Line points={midPts}  segments lineWidth={5} color={CORNER_COLORS.mid}  />}
-      {exitPts.length >= 2 && <Line points={exitPts} segments lineWidth={5} color={CORNER_COLORS.exit} />}
+      {visibility.mid  && midPts.length  >= 2 && <Line points={midPts}  segments lineWidth={5} color={CORNER_COLORS.mid}  />}
+      {visibility.exit && exitPts.length >= 2 && <Line points={exitPts} segments lineWidth={5} color={CORNER_COLORS.exit} />}
 
       {/* Corner labels */}
-      {lap.corners.map((c) => {
-        const f = lap.frames[c.apex];
+      {visCorners.map((c) => {
+        const f = visFrames[c.apex];
         if (!f) return null;
         return (
           <Html key={c.id} position={[f.x, f.y + 4, f.z]} center style={{ pointerEvents: 'none' }}>
@@ -242,9 +284,14 @@ function CameraFit({ laps, trigger }: { laps: LapData[]; trigger: number }) {
   return null;
 }
 
-function Scene({ laps, visibleLaps, fitTrigger }: {
+function Scene({
+  laps, visibleLaps, lapStarts, playbackIdx, visibility, fitTrigger,
+}: {
   laps: LapData[];
   visibleLaps: Set<number>;
+  lapStarts: number[];
+  playbackIdx: number | null;
+  visibility: OverlayVisibility;
   fitTrigger: number;
 }) {
   return (
@@ -257,35 +304,53 @@ function Scene({ laps, visibleLaps, fitTrigger }: {
         fadeDistance={8000} infiniteGrid position={[0, -0.05, 0]}
       />
       <CameraFit laps={laps} trigger={fitTrigger} />
-      {laps.map((lap) =>
+      {laps.map((lap, i) =>
         visibleLaps.has(lap.index) ? (
-          <LapLayer key={lap.index} lap={lap} color={LAP_PATH_COLORS[lap.index % LAP_PATH_COLORS.length]} />
+          <LapLayer
+            key={lap.index}
+            lap={lap}
+            color={LAP_PATH_COLORS[lap.index % LAP_PATH_COLORS.length]}
+            lapStart={lapStarts[i] ?? 0}
+            playbackIdx={playbackIdx}
+            visibility={visibility}
+          />
         ) : null,
       )}
     </>
   );
 }
 
-// ---- Legend -------------------------------------------------------------------
+// ---- Legend ----------------------------------------------------------------
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function LegendEntry({
+  color, label, isLine, checked, onToggle,
+}: {
+  color: string;
+  label: string;
+  isLine: boolean;
+  checked: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-[10px] font-mono text-text-muted">{label}</span>
-    </div>
+    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="w-3.5 h-3.5 shrink-0 cursor-pointer"
+        style={{ accentColor: color }}
+      />
+      {isLine ? (
+        <span className="w-5 h-[3px] rounded shrink-0" style={{ backgroundColor: color }} />
+      ) : (
+        <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      )}
+      <span className="text-[12px] font-mono text-text-muted">{label}</span>
+    </label>
   );
 }
-function LegendLine({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-3 h-[3px] rounded shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-[10px] font-mono text-text-muted">{label}</span>
-    </div>
-  );
-}
 
-// ---- Public component ---------------------------------------------------------
+// ---- Public component ------------------------------------------------------
 
 interface Props {
   packets: TelemetryData[];
@@ -295,14 +360,77 @@ interface Props {
 
 export function TestLapViewer({ packets, tuneType, onClose }: Props) {
   const laps = useMemo(() => buildLapData(packets, tuneType), [packets, tuneType]);
-  const [visibleLaps, setVisibleLaps] = useState<Set<number>>(() => new Set(laps.map((l) => l.index)));
-  const [fitTrigger, setFitTrigger] = useState(1);
 
-  // When laps first computed, make all visible
+  const [visibleLaps,    setVisibleLaps]    = useState<Set<number>>(() => new Set());
+  const [fitTrigger,     setFitTrigger]     = useState(1);
+  const [overlayVisible, setOverlayVisible] = useState<OverlayVisibility>(ALL_VISIBLE);
+  const [playbackIdx,    setPlaybackIdx]    = useState<number | null>(null); // null = show full path
+  const [isPlaying,      setIsPlaying]      = useState(false);
+
+  const lapStarts = useMemo(() => {
+    const starts: number[] = [];
+    let acc = 0;
+    for (const lap of laps) { starts.push(acc); acc += lap.frames.length; }
+    return starts;
+  }, [laps]);
+
+  const totalFrames = useMemo(
+    () => laps.reduce((s, l) => s + l.frames.length, 0),
+    [laps],
+  );
+
+  // Reset all state when laps change
   useEffect(() => {
     setVisibleLaps(new Set(laps.map((l) => l.index)));
     setFitTrigger((n) => n + 1);
+    setPlaybackIdx(null);
+    setIsPlaying(false);
   }, [laps]);
+
+  // RAF-based playback — 5× real-time at assumed 60 fps source data
+  const playbackIdxRef = useRef<number | null>(null);
+  useEffect(() => { playbackIdxRef.current = playbackIdx; }, [playbackIdx]);
+
+  useEffect(() => {
+    if (!isPlaying || totalFrames === 0) return;
+
+    let animId: number;
+    let lastTime: number | null = null;
+
+    const step = (now: number) => {
+      if (lastTime !== null) {
+        const elapsed = now - lastTime;
+        const advance = Math.max(1, Math.round((elapsed / 1000) * 60 * 5));
+        const cur = playbackIdxRef.current ?? 0;
+        const next = cur + advance;
+
+        if (next >= totalFrames - 1) {
+          setPlaybackIdx(null);   // playback complete — show full path
+          setIsPlaying(false);
+          return;
+        }
+
+        playbackIdxRef.current = next;
+        setPlaybackIdx(next);
+      }
+      lastTime = now;
+      animId = requestAnimationFrame(step);
+    };
+
+    animId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animId);
+  }, [isPlaying, totalFrames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    } else {
+      // Restart from beginning when at end / full-path view
+      const cur = playbackIdx ?? (totalFrames - 1);
+      if (cur >= totalFrames - 1) setPlaybackIdx(0);
+      setIsPlaying(true);
+    }
+  }, [isPlaying, playbackIdx, totalFrames]);
 
   const toggleLap = (idx: number) => {
     setVisibleLaps((prev) => {
@@ -311,6 +439,47 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
       return next;
     });
   };
+
+  const toggleOverlay = (key: OverlayKey) => {
+    setOverlayVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // ---- Time helpers --------------------------------------------------------
+
+  const getFrameMs = (globalIdx: number): number => {
+    if (laps.length === 0) return 0;
+    const t0 = laps[0].frames[0]?.t ?? 0;
+    let acc = 0;
+    for (const lap of laps) {
+      if (globalIdx < acc + lap.frames.length) {
+        return (lap.frames[globalIdx - acc]?.t ?? t0) - t0;
+      }
+      acc += lap.frames.length;
+    }
+    const last = laps[laps.length - 1];
+    return (last.frames[last.frames.length - 1]?.t ?? t0) - t0;
+  };
+
+  const fmtTime = (ms: number): string => {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  const getCurrentLapLabel = (globalIdx: number): string => {
+    let acc = 0;
+    for (let i = 0; i < laps.length; i++) {
+      if (globalIdx < acc + laps[i].frames.length) return `L${i + 1}`;
+      acc += laps[i].frames.length;
+    }
+    return `L${laps.length}`;
+  };
+
+  const scrubValue   = playbackIdx ?? Math.max(0, totalFrames - 1);
+  const currentMs    = getFrameMs(scrubValue);
+  const totalMs      = getFrameMs(Math.max(0, totalFrames - 1));
+  const lapLabel     = playbackIdx !== null ? getCurrentLapLabel(playbackIdx) : '';
+
+  // ---- Render --------------------------------------------------------------
 
   if (packets.length === 0) {
     return (
@@ -367,7 +536,7 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
         </button>
       </div>
 
-      {/* ── Canvas ── */}
+      {/* ── Canvas area ── */}
       <div className="relative flex-1 min-h-0 bg-[#050508]">
         <Canvas
           camera={{ position: [0, 120, 180], fov: 50, near: 0.1, far: 200000 }}
@@ -375,13 +544,21 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
           onCreated={({ gl }) => gl.setClearColor(new THREE.Color('#050508'))}
         >
           <Suspense fallback={null}>
-            <Scene laps={laps} visibleLaps={visibleLaps} fitTrigger={fitTrigger} />
+            <Scene
+              laps={laps}
+              visibleLaps={visibleLaps}
+              lapStarts={lapStarts}
+              playbackIdx={playbackIdx}
+              visibility={overlayVisible}
+              fitTrigger={fitTrigger}
+            />
             <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
           </Suspense>
         </Canvas>
 
-        {/* Fit button */}
-        <div className="absolute top-3 right-3">
+        {/* ── Top-right: fit button + legend ── */}
+        <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
+          {/* Fit button */}
           <button
             onClick={() => setFitTrigger((n) => n + 1)}
             title="Fit path in view"
@@ -391,21 +568,21 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
               <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" />
             </svg>
           </button>
-        </div>
 
-        {/* Legend */}
-        <div className="absolute bottom-3 left-3 flex flex-col gap-2">
-          <div className="flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
-            <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">Validation</span>
-            <LegendDot  color={OVERLAY_COLORS.collision} label="Collision"  />
-            <LegendLine color={OVERLAY_COLORS.offRoad}   label="Off-road"   />
-            <LegendLine color={OVERLAY_COLORS.airborne}  label="Airborne"   />
-            <LegendLine color={OVERLAY_COLORS.handbrake} label="Handbrake"  />
-          </div>
-          <div className="flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
-            <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">Corners</span>
-            <LegendLine color={CORNER_COLORS.mid}  label="Mid-corner"  />
-            <LegendLine color={CORNER_COLORS.exit} label="Corner exit" />
+          {/* Legend */}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 px-3.5 py-3 rounded border border-border-muted bg-bg-surface/90 backdrop-blur min-w-[160px]">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">Validation</span>
+              <LegendEntry color={OVERLAY_COLORS.collision} label="Collision"  isLine={false} checked={overlayVisible.collision} onToggle={() => toggleOverlay('collision')} />
+              <LegendEntry color={OVERLAY_COLORS.offRoad}   label="Off-road"   isLine={true}  checked={overlayVisible.offRoad}   onToggle={() => toggleOverlay('offRoad')}   />
+              <LegendEntry color={OVERLAY_COLORS.airborne}  label="Airborne"   isLine={true}  checked={overlayVisible.airborne}  onToggle={() => toggleOverlay('airborne')}  />
+              <LegendEntry color={OVERLAY_COLORS.handbrake} label="Handbrake"  isLine={true}  checked={overlayVisible.handbrake} onToggle={() => toggleOverlay('handbrake')} />
+            </div>
+            <div className="flex flex-col gap-2 px-3.5 py-3 rounded border border-border-muted bg-bg-surface/90 backdrop-blur min-w-[160px]">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">Corners</span>
+              <LegendEntry color={CORNER_COLORS.mid}  label="Mid-corner"  isLine={true} checked={overlayVisible.mid}  onToggle={() => toggleOverlay('mid')}  />
+              <LegendEntry color={CORNER_COLORS.exit} label="Corner exit" isLine={true} checked={overlayVisible.exit} onToggle={() => toggleOverlay('exit')} />
+            </div>
           </div>
         </div>
 
@@ -417,6 +594,68 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
             </span>
           </div>
         )}
+      </div>
+
+      {/* ── Timeline ── */}
+      <div className="shrink-0 bg-bg-surface border-t border-border-muted px-4 py-2.5 flex items-center gap-3">
+        {/* Play / Pause */}
+        <button
+          onClick={togglePlay}
+          disabled={totalFrames === 0}
+          title={isPlaying ? 'Pause' : 'Play'}
+          className="h-7 w-7 inline-flex items-center justify-center rounded border border-border-muted bg-bg-input text-text-muted hover:text-text hover:border-border transition-colors disabled:opacity-30 shrink-0"
+        >
+          {isPlaying ? (
+            <svg width="10" height="11" viewBox="0 0 10 11" fill="currentColor">
+              <rect x="0" y="0" width="3.5" height="11" rx="1" />
+              <rect x="6.5" y="0" width="3.5" height="11" rx="1" />
+            </svg>
+          ) : (
+            <svg width="10" height="11" viewBox="0 0 10 11" fill="currentColor">
+              <path d="M1 0.5 L9.5 5.5 L1 10.5 Z" />
+            </svg>
+          )}
+        </button>
+
+        {/* Show full path */}
+        <button
+          onClick={() => { setPlaybackIdx(null); setIsPlaying(false); }}
+          disabled={playbackIdx === null}
+          title="Show full path"
+          className="h-7 px-2 rounded border border-border-muted bg-bg-input text-[9px] font-mono uppercase tracking-wider text-text-muted hover:text-text hover:border-border transition-colors disabled:opacity-30 shrink-0"
+        >
+          All
+        </button>
+
+        {/* Current position */}
+        <div className="flex items-center gap-1.5 shrink-0 w-[5.5rem]">
+          {lapLabel && (
+            <span className="text-[10px] font-mono text-text-dim">{lapLabel}</span>
+          )}
+          <span className="text-[11px] font-mono text-text-muted tabular-nums">
+            {fmtTime(currentMs)}
+          </span>
+        </div>
+
+        {/* Scrubber */}
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0, totalFrames - 1)}
+          value={scrubValue}
+          onChange={(e) => {
+            setIsPlaying(false);
+            const v = Number(e.target.value);
+            setPlaybackIdx(v >= totalFrames - 1 ? null : v);
+          }}
+          className="flex-1 h-1 cursor-pointer"
+          style={{ accentColor: '#00d4ff' }}
+        />
+
+        {/* Total duration */}
+        <span className="text-[11px] font-mono text-text-dim tabular-nums shrink-0 w-[3rem] text-right">
+          {fmtTime(totalMs)}
+        </span>
       </div>
     </div>
   );
