@@ -53,27 +53,24 @@ export function RefinementPanel({
 
   const { recording, frameCount, start, stop } = useTestLapRecorder();
 
-  // First time we ever get a valid tune, seed the working copy.
-  const [seeded, setSeeded] = useState(false);
-  useEffect(() => {
-    if (!seeded) {
-      setBaseParams(flattenTune(result));
-      setSeeded(true);
-    }
-  }, [result, seeded]);
-
-  // When a saved tune is loaded, reset to the loaded params.
+  // Keep the editable working copy in sync with the calculated tune. Any change
+  // to the vehicle inputs (or the customize modifiers) recomputes `result`, and
+  // we re-seed the values from it, discarding any pending suggestions. The one
+  // exception is loading a saved tune, which restores that tune's refined values
+  // instead of the freshly calculated ones.
   const prevLoadVersion = useRef(loadVersion ?? 0);
   useEffect(() => {
-    if (loadVersion !== undefined && loadVersion !== prevLoadVersion.current) {
-      prevLoadVersion.current = loadVersion;
-      if (loadedParams && loadedParams.length > 0) {
-        setBaseParams(loadedParams);
-        setSuggestions(null);
-        setAnalysis(null);
-      }
+    const justLoaded = loadVersion !== undefined && loadVersion !== prevLoadVersion.current;
+    if (justLoaded) prevLoadVersion.current = loadVersion;
+
+    if (justLoaded && loadedParams && loadedParams.length > 0) {
+      setBaseParams(loadedParams);
+    } else {
+      setBaseParams(flattenTune(result));
     }
-  }, [loadVersion, loadedParams]);
+    setSuggestions(null);
+    setAnalysis(null);
+  }, [result, loadVersion, loadedParams]);
 
   // Notify parent whenever the working copy changes.
   useEffect(() => {
