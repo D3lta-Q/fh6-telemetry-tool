@@ -1,7 +1,4 @@
 /**
- * Tune calculator — a faithful port of the ForzaTune Pro engine, specialised
- * to the Forza Horizon 5 code path (the closest available match for FH6).
- *
  * The engine runs internally in metric mode (weight in kg); every output value
  * carries both English and metric figures, so the UI can render whichever unit
  * the user selects without re-running the calculation.
@@ -166,7 +163,7 @@ export class TuneCalculator {
 
   calculate(): TuneResult {
     this.initialize();
-    // Every ForzaTune tune type is a dedicated calculator subclass. The shared
+    // Every tune type is a dedicated calculator subclass. The shared
     // pipeline below mirrors the base class's step order; a per-type pre-filter
     // seeds the offsets each subclass sets, individual steps branch to the
     // type-specific model where one exists, and a per-type post-filter applies
@@ -403,7 +400,7 @@ export class TuneCalculator {
     this.result.springs = { front, rear, rideHeight };
   }
 
-  // ---- rally tune path (ForzaTune `Se` subclass) ---------------------------
+  // ---- rally tune path ---------------------------
 
   /**
    * Rally pre-filter (Se.preFilter + Se.step07Setup, FH5 branch).
@@ -472,9 +469,7 @@ export class TuneCalculator {
 
   /** Rally spring/damper natural-frequency limit (Se.getSpringDamperLimit, FH5). */
   private rallySpringLimit(): { minW: number; maxW: number } {
-    // FH5 generic limit. (ForzaTune additionally has a per-car override table
-    // keyed by its internal car id; the generic limit covers the vast majority
-    // of cars including this one.)
+    // FH5 generic limit
     return { minW: 1.802, maxW: 3.18 };
   }
 
@@ -540,13 +535,11 @@ export class TuneCalculator {
     this.result.springs = { front, rear, rideHeight };
   }
 
-  // ---- truck / buggy tune path (ForzaTune `oe` / `De` subclasses) ----------
+  // ---- truck / buggy tune path (`oe` / `De` subclasses) ----------
 
   /**
    * Truck/Buggy natural-frequency suspension limit (oe/De.getTruckSuspensionLimit,
-   * FH5 generic). ForzaTune additionally keys a per-vehicle override table off
-   * its internal car id; the generic limit covers cars we can't identify, the
-   * same approach used for the rally path.
+   * FH5 generic).
    */
   private truckSuspensionLimit(): { minW: number; maxW: number; minZ: number } {
     const minW = this.isBuggy ? 1.5 : 1.01;
@@ -683,7 +676,7 @@ export class TuneCalculator {
     };
   }
 
-  /** Truck/Buggy post-filter (oe.postFilter / De.postFilter, FH5). */
+  /** Truck/Buggy post-filter */
   private truckPostFilter(): void {
     const r = this.result;
     const rwd = this.req.drivetrain === Drivetrain.RWD;
@@ -718,7 +711,7 @@ export class TuneCalculator {
     this.truckPostFilter();
   }
 
-  // ---- rain tune path (ForzaTune `xe` subclass) ----------------------------
+  // ---- rain tune path ----------------------------
 
   private rainPreFilter(): void {
     this.o1 = 0.9;
@@ -735,7 +728,7 @@ export class TuneCalculator {
     };
   }
 
-  // ---- drift tune path (ForzaTune `ye` subclass) ---------------------------
+  // ---- drift tune path ---------------------------
 
   private driftPreFilter(): void {
     this.o1 = 1.1;
@@ -786,7 +779,7 @@ export class TuneCalculator {
     );
   }
 
-  // ---- drag tune path (ForzaTune `qe` subclass) ----------------------------
+  // ---- drag tune path ----------------------------
 
   private dragPreFilter(): void {
     this.p09 = 0.75;

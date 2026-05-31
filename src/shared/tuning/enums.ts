@@ -1,10 +1,5 @@
 /**
  * Enumerations for the tuning calculator.
- *
- * These mirror the numeric enum values used by the original ForzaTune Pro
- * calculation engine so the ported formulas behave identically. The calculator
- * targets the Forza Horizon 5 code path, which is the closest match available
- * for Forza Horizon 6 (the source app predates FH6).
  */
 
 export enum Drivetrain {
@@ -53,7 +48,7 @@ export const DRIVETRAIN_LABELS: { value: Drivetrain; label: string }[] = [
 ];
 
 /**
- * Tune types available for each driving surface, mirroring ForzaTune Pro.
+ * Tune types available for each driving surface
  *
  * Street (paved) surfaces offer the road-oriented tunes; the loose surfaces
  * (Dirt or Sand Trails, Cross Country or Off-Road) offer the off-road tunes.

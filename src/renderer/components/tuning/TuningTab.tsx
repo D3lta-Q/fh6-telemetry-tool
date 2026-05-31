@@ -87,7 +87,6 @@ export function TuningTab() {
   const [surfaceId, setSurfaceId] = useState(SURFACES[0].id);
   const [tuneType, setTuneType] = useState<TuneType>(TuneType.Dry);
 
-  // Tune types are constrained by the chosen surface (mirrors ForzaTune): paved
   // surfaces expose the road tunes, loose surfaces the off-road tunes.
   const allowedTuneTypes = useMemo(() => tuneTypesForSurface(surfaceId), [surfaceId]);
   const tuneTypeOptions = TUNE_TYPE_LABELS.filter((t) => allowedTuneTypes.includes(t.value));
