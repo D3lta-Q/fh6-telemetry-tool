@@ -124,18 +124,23 @@ export class TuneCalculator {
   private E16 = 0; // front spring energy term
   private E17 = 0; // rear spring energy term
 
+  // Working copies of the surface parameters. Most tunes use them verbatim, but
+  // a few (notably Drag) override ride height / stiffness in their pre-filter.
+  private wStiffness = 100;
+  private wRideHeight = 0;
+
   private result: Partial<TuneResult> = {};
 
   constructor(private req: TuneRequest) {}
 
   calculate(): TuneResult {
     this.initialize();
-    // Rally is a distinct calculator path in ForzaTune (the `Se` subclass): a
-    // pre-filter seeds rally-specific offsets, several steps use a different
-    // (softer, natural-frequency-limited) model, and a post-filter trims tyres,
-    // caster and brake bias.
-    const rally = this.req.tuneType === TuneType.Rally;
-    if (rally) this.rallyPreFilter();
+    // Every ForzaTune tune type is a dedicated calculator subclass. The shared
+    // pipeline below mirrors the base class's step order; a per-type pre-filter
+    // seeds the offsets each subclass sets, individual steps branch to the
+    // type-specific model where one exists, and a per-type post-filter applies
+    // the trims the subclass does after the steps run.
+    this.preFilter();
     this.stepTires();
     this.stepAlignment();
     this.stepSprings();
@@ -145,17 +150,79 @@ export class TuneCalculator {
     this.stepDifferentials();
     this.stepGearing();
     this.stepAero();
-    if (rally) this.rallyPostFilter();
+    this.postFilter();
     return this.result as TuneResult;
   }
 
   private get isRally(): boolean {
     return this.req.tuneType === TuneType.Rally;
   }
+  private get isTruckLike(): boolean {
+    return this.req.tuneType === TuneType.Truck || this.req.tuneType === TuneType.Buggy;
+  }
+  private get isBuggy(): boolean {
+    return this.req.tuneType === TuneType.Buggy;
+  }
 
-  /** Rally treats the Cross-Country / off-road surface specially. */
-  private get isRallyOffRoad(): boolean {
+  /** True on the Cross-Country / off-road surface (id contains "off-road"). */
+  private get isOffRoad(): boolean {
     return this.req.surface.id.includes('off-road');
+  }
+  /** Back-compat alias used by the rally path. */
+  private get isRallyOffRoad(): boolean {
+    return this.isOffRoad;
+  }
+
+  // ---- per-type pre/post filters -------------------------------------------
+
+  private preFilter(): void {
+    switch (this.req.tuneType) {
+      case TuneType.Rain:
+        this.rainPreFilter();
+        break;
+      case TuneType.Drift:
+        this.driftPreFilter();
+        break;
+      case TuneType.Drag:
+        this.dragPreFilter();
+        break;
+      case TuneType.Rally:
+        this.rallyPreFilter();
+        break;
+      case TuneType.Truck:
+        this.truckPreFilter();
+        break;
+      case TuneType.Buggy:
+        this.buggyPreFilter();
+        break;
+      default:
+        break; // Dry: no pre-filter (offsets are applied inline in the steps).
+    }
+  }
+
+  private postFilter(): void {
+    switch (this.req.tuneType) {
+      case TuneType.Rain:
+        this.rainPostFilter();
+        break;
+      case TuneType.Drift:
+        this.driftPostFilter();
+        break;
+      case TuneType.Drag:
+        this.dragPostFilter();
+        break;
+      case TuneType.Rally:
+        this.rallyPostFilter();
+        break;
+      case TuneType.Truck:
+        this.truckPostFilter();
+        break;
+      case TuneType.Buggy:
+        this.buggyPostFilter();
+        break;
+      default:
+        break; // Dry: no post-filter.
+    }
   }
 
   // ---- helpers --------------------------------------------------------------
@@ -185,6 +252,8 @@ export class TuneCalculator {
     this.E14 = (this.E5 * this.req.percentFront) / 100;
     this.E15 = this.E5 - this.E14;
     this.o1 = 1.06;
+    this.wStiffness = this.req.surface.stiffness;
+    this.wRideHeight = this.req.surface.rideHeight;
   }
 
   // ---- step 1: tyre pressures ----------------------------------------------
@@ -271,12 +340,15 @@ export class TuneCalculator {
   }
 
   private stepSprings(): void {
-    if (this.isRally) {
-      this.stepSpringsRally();
-      return;
-    }
-    const baseF = this.getBaseF();
-    const stiffness = this.req.surface.stiffness;
+    if (this.isRally) return this.stepSpringsRally();
+    if (this.isTruckLike) return this.stepSpringsTruck();
+
+    // Dry / Rain / Drift / Drag share the base (PI-based natural-frequency)
+    // spring model. Drag overrides the natural-frequency target and uses an
+    // identity rate map; the others use the standard PI target and FH5 map.
+    const isDrag = this.req.tuneType === TuneType.Drag;
+    const baseF = isDrag ? 2.25 : this.getBaseF();
+    const stiffness = this.wStiffness;
     const rideStiffness = TUNE_MODIFIER_DEFAULT;
 
     if (this.req.drivetrain === Drivetrain.RWD) this.o3 -= 0.618;
@@ -292,10 +364,11 @@ export class TuneCalculator {
     this.E17 = 0.5 * this.E15 * Math.pow(f, 2);
 
     const h = 0.00101972;
-    const front = new SpringValue(this.E5, this.mapSpringRate(this.E16 * h), true, this.req.tuneType);
-    const rear = new SpringValue(this.E5, this.mapSpringRate(this.E17 * h), true, this.req.tuneType);
+    const map = isDrag ? (n: number) => n : (n: number) => this.mapSpringRate(n);
+    const front = new SpringValue(this.E5, map(this.E16 * h), true, this.req.tuneType);
+    const rear = new SpringValue(this.E5, map(this.E17 * h), true, this.req.tuneType);
     const rhAdjust = Math.round((100 - rideStiffness) / 10);
-    const rideHeight = new RideHeightValue(this.req.surface.rideHeight + rhAdjust + this.o4, false);
+    const rideHeight = new RideHeightValue(this.wRideHeight + rhAdjust + this.o4, false);
     this.result.springs = { front, rear, rideHeight };
   }
 
@@ -432,8 +505,305 @@ export class TuneCalculator {
     const front = new SpringValue(this.E5, frontRate, true, this.req.tuneType, frontMin, sharedMax);
     const rear = new SpringValue(this.E5, rearRate, true, this.req.tuneType, rearMin, sharedMax);
     const rhAdjust = Math.round((100 - rideStiffness) / 10);
-    const rideHeight = new RideHeightValue(this.req.surface.rideHeight + rhAdjust + this.o4, false);
+    const rideHeight = new RideHeightValue(this.wRideHeight + rhAdjust + this.o4, false);
     this.result.springs = { front, rear, rideHeight };
+  }
+
+  // ---- truck / buggy tune path (ForzaTune `oe` / `De` subclasses) ----------
+
+  /**
+   * Truck/Buggy natural-frequency suspension limit (oe/De.getTruckSuspensionLimit,
+   * FH5 generic). ForzaTune additionally keys a per-vehicle override table off
+   * its internal car id; the generic limit covers cars we can't identify, the
+   * same approach used for the rally path.
+   */
+  private truckSuspensionLimit(): { minW: number; maxW: number; minZ: number } {
+    const minW = this.isBuggy ? 1.5 : 1.01;
+    const maxW = 2.25;
+    const minZ = this.truckTargetZ(minW);
+    return { minW, maxW, minZ };
+  }
+
+  /** Truck/Buggy damping coefficient (oe.stepd / De.stepd, FH5). */
+  private truckStepd(): number {
+    return this.isBuggy ? 1 : 0.73;
+  }
+
+  /** oe.calcTargetZ(1, 1, E14/2, s) — the natural-frequency damping floor. */
+  private truckTargetZ(s: number): number {
+    const i = this.E14 / 2;
+    const a = s * (2 * Math.PI);
+    const f = 2 / 0.00101972 / (2 * Math.sqrt(Math.pow(a, 2) * Math.pow(i, 2)));
+    const h = this.truckStepd();
+    return f < h ? h : f;
+  }
+
+  /** Truck/Buggy natural-frequency target (oe.getBaseF, FH5). */
+  private truckBaseF(minW: number): number {
+    let e = this.isOffRoad ? 1.02 : 1.07;
+    e *= 1.1; // FH5
+    return minW * e;
+  }
+
+  /** Differential working ranges for truck/buggy (oe.step07Setup). */
+  private setTruckDiffRanges(): void {
+    this.fAccelLower = 10;
+    this.fAccelDefault = 25;
+    this.fAccelUpper = 40;
+    this.fDecelLower = 0;
+    this.fDecelDefault = 5;
+    this.fDecelUpper = 10;
+    this.rAccelLower = 50;
+    this.rAccelDefault = 65;
+    this.rAccelUpper = 80;
+    this.rDecelLower = 15;
+    this.rDecelDefault = 25;
+    this.rDecelUpper = 35;
+    if (this.req.drivetrain === Drivetrain.RWD) {
+      this.rDecelLower = 5;
+      this.rDecelDefault = 10;
+      this.rDecelUpper = 15;
+    }
+    this.centerLower = 50;
+    this.centerDefault = 65;
+    this.centerUpper = 80;
+    this.adjustmentScale = 1.15;
+  }
+
+  private truckPreFilter(): void {
+    this.o4 = 4;
+    this.o1 = 1;
+    this.o2 = this.isOffRoad ? 0.12 : 0.2;
+    // Horizon seeds the damping scale (p09/p10) from the suspension limit.
+    const limit = this.truckSuspensionLimit();
+    const sd = this.truckStepd();
+    this.p09 = (limit.minZ / sd) * 1.618;
+    this.p10 = this.p09;
+    this.p05 = 0.55;
+    this.p08 = 1.818;
+    if (this.isOffRoad) {
+      this.p05 = 0.5;
+      this.p08 = 2;
+      this.o4 = 5;
+    }
+    this.setTruckDiffRanges();
+  }
+
+  private buggyPreFilter(): void {
+    this.truckPreFilter();
+    this.o2 = 0.25;
+    this.o4 = 6;
+  }
+
+  /** Truck/Buggy springs + ride height (oe.step03). `mapRates` is identity. */
+  private stepSpringsTruck(): void {
+    const n = this.req.percentFront / 100;
+    const limit = this.truckSuspensionLimit();
+    const rideStiffness = TUNE_MODIFIER_DEFAULT;
+    let a = (this.truckBaseF(limit.minW) * rideStiffness) / 100 * this.o1;
+    if (a > limit.maxW) a = limit.maxW;
+    else if (a < limit.minW) a = limit.minW;
+
+    const s = 100 + 0.1 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3;
+    const hRad = 2 * a * Math.PI;
+    const d = (hRad * (100 - (s - 100))) / 100 * this.p07;
+    this.E16 = 0.5 * this.E14 * Math.pow((hRad * s) / 100 * this.p06, 2);
+    this.E17 = 0.5 * this.E15 * Math.pow(d, 2);
+
+    const hConv = 0.00101972;
+    const frontRate = this.E16 * hConv;
+    const rearRate = this.E17 * hConv;
+    const frontMin = 0.05116 * n * Math.pow(limit.minW, 2);
+    const rearMin = 0.05116 * (1 - n) * Math.pow(limit.minW, 2);
+    const sharedMax = 0.02558 * Math.pow(limit.maxW, 2);
+
+    const front = new SpringValue(this.E5, frontRate, true, this.req.tuneType, frontMin, sharedMax);
+    const rear = new SpringValue(this.E5, rearRate, true, this.req.tuneType, rearMin, sharedMax);
+    const rhAdjust = Math.round((100 - rideStiffness) / 10);
+    const rideHeight = new RideHeightValue(this.wRideHeight + rhAdjust + this.o4, false);
+    this.result.springs = { front, rear, rideHeight };
+  }
+
+  /** Truck/Buggy damping (oe.step04). `mapRates04` is identity; clamps to 1..20. */
+  private stepDampingTruck(): void {
+    const nFront = 2 * Math.sqrt(0.5 * this.E14 * this.E16);
+    const nRear = 2 * Math.sqrt(0.5 * this.E15 * this.E17);
+    const i = this.truckStepd();
+    const l = nFront * (i * this.p09) * 0.001024;
+    const u = nRear * (i * this.p10) * 0.001024;
+
+    const rwd = this.req.drivetrain === Drivetrain.RWD;
+    let f = rwd ? 1.5 : 1.333;
+    let h = rwd ? 1.38 : 1.55;
+    const c = this.isOffRoad ? 2.7 : 2.4; // FH5
+    f *= c;
+    h *= c;
+
+    const g = l / (1 + (f + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05)));
+    const m = u / (h - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08) + 1);
+    const reboundFront = l - g;
+    const reboundRear = u - m;
+
+    this.result.damping = {
+      frontBump: new DampingValue(g, false, this.req.tuneType, DamperType.Bump),
+      rearBump: new DampingValue(m, false, this.req.tuneType, DamperType.Bump),
+      frontRebound: new DampingValue(reboundFront, false, this.req.tuneType, DamperType.Rebound),
+      rearRebound: new DampingValue(reboundRear, false, this.req.tuneType, DamperType.Rebound),
+    };
+  }
+
+  /** Truck/Buggy post-filter (oe.postFilter / De.postFilter, FH5). */
+  private truckPostFilter(): void {
+    const r = this.result;
+    const rwd = this.req.drivetrain === Drivetrain.RWD;
+    let n = 0.75; // FH5 (base 0.9)
+    let bias = rwd ? 50 : 52;
+
+    if (this.isOffRoad) {
+      n = 0.6; // FH5 off-road
+      bias = 50;
+      const e = 0.618;
+      let fc = r.alignment!.frontCamber.englishValueAsNumber * e;
+      let rc = r.alignment!.rearCamber.englishValueAsNumber * e;
+      if (fc > -1.4) fc = -1.4;
+      if (rc > -0.4) rc = -0.4;
+      r.alignment!.frontCamber = new CamberValue(fc, false);
+      r.alignment!.rearCamber = new CamberValue(rc, false);
+    }
+
+    // Buggy trims tyre pressures a further ×0.6 on top of the truck factor.
+    if (this.isBuggy) n *= 0.6;
+
+    r.alignment!.caster = new CasterValue(rwd ? 6 : 5.5, false);
+    r.tires = {
+      front: new PressureValue(r.tires!.front.englishValueAsNumber * n, false),
+      rear: new PressureValue(r.tires!.rear.englishValueAsNumber * n, false),
+    };
+    r.brakes = new BrakeValue(bias, 100);
+  }
+
+  /** Buggy post-filter delegates to the truck filter (which folds in the ×0.6). */
+  private buggyPostFilter(): void {
+    this.truckPostFilter();
+  }
+
+  // ---- rain tune path (ForzaTune `xe` subclass) ----------------------------
+
+  private rainPreFilter(): void {
+    this.o1 = 0.9;
+    this.o4 = 1;
+    this.o2 = 0.5;
+  }
+
+  private rainPostFilter(): void {
+    const r = this.result;
+    r.brakes = new BrakeValue(r.brakes!.balance, 85);
+    r.tires = {
+      front: new PressureValue(r.tires!.front.englishValueAsNumber * 1.03, false),
+      rear: new PressureValue(r.tires!.rear.englishValueAsNumber * 1.03, false),
+    };
+  }
+
+  // ---- drift tune path (ForzaTune `ye` subclass) ---------------------------
+
+  private driftPreFilter(): void {
+    this.o1 = 1.1;
+    this.o4 = -5;
+    this.o2 = 1.25;
+    this.p05 = 1;
+    this.p08 = this.mapF(this.dCalc06(), -0.4, 0.4, 0.8, 1.2);
+    let a = 0;
+    if (this.req.drivetrain === Drivetrain.AWD && this.req.geometry.engineLocation === EngineLocation.Front) {
+      a = 12;
+      this.p08 *= 1.5;
+    }
+    this.o3 = a;
+  }
+
+  private driftPostFilter(): void {
+    const r = this.result;
+    // FH5: front/rear toe are forced to zero (the rearToe map collapses to 0).
+    if (this.req.drivetrain === Drivetrain.RWD) {
+      r.tires!.rear = new PressureValue(r.tires!.rear.englishValueAsNumber * 0.76, false);
+    }
+    r.alignment!.frontCamber = new CamberValue(r.alignment!.frontCamber.englishValueAsNumber * 2.7, false);
+    r.alignment!.rearCamber = new CamberValue(r.alignment!.rearCamber.englishValueAsNumber * 0.75, false);
+    r.alignment!.frontToe = new ToeValue(0, false);
+    r.alignment!.rearToe = new ToeValue(0, false);
+    r.alignment!.caster = new CasterValue(r.alignment!.caster.englishValueAsNumber * 1.3, false);
+  }
+
+  /** Drift differentials (ye.step07) — a bespoke model, not the base step07. */
+  private driftStep07(): void {
+    const m = TUNE_MODIFIER_DEFAULT; // overall/entry/exit balance (neutral 100)
+    const exit = m;
+    const entry = m;
+    const overall = m;
+    const a = 90; // AWD centre base
+    const d = (2 * (overall - 100)) / 3 + 100;
+    const frontAccel = (10 * (2 * (100 - exit) + 100)) / 100;
+    const frontDecel = (10 * (2 * (100 - entry) + 100)) / 100;
+    const rearAccel = (100 * (2 * (exit - 100) + 100)) / 100;
+    const rearDecel = (100 * (2 * (entry - 100) + 100)) / 100;
+    let center = (a * d) / 100;
+    if (center > 100) center = 100;
+    else if (center < 0) center = 0;
+    this.result.differentials = new Differentials(
+      new DifferentialValue(frontAccel, frontDecel),
+      new DifferentialValue(rearAccel, rearDecel),
+      center
+    );
+  }
+
+  // ---- drag tune path (ForzaTune `qe` subclass) ----------------------------
+
+  private dragPreFilter(): void {
+    this.p09 = 0.75;
+    this.p10 = 0.75;
+    this.o1 = 1;
+    this.wRideHeight = this.req.drivetrain === Drivetrain.FWD ? 2 : 5;
+    this.wStiffness = 100;
+    if (this.req.drivetrain === Drivetrain.FWD) {
+      this.p08 = 0.7;
+    } else {
+      this.p05 = 1.875;
+      this.p08 = 2.05;
+    }
+  }
+
+  private dragPostFilter(): void {
+    const r = this.result;
+    let frontTire = 45;
+    let rearTire = 15;
+    let frontCamber = -1.5;
+    let rearCamber = 0.2;
+    if (this.req.drivetrain === Drivetrain.AWD) {
+      frontTire = 15;
+      frontCamber = -0.2;
+    } else if (this.req.drivetrain === Drivetrain.FWD) {
+      rearTire = 45;
+      frontTire = 15;
+      frontCamber = -0.2;
+      rearCamber = -1.5;
+    }
+    r.tires = {
+      front: new PressureValue(frontTire, false),
+      rear: new PressureValue(rearTire, false),
+    };
+    r.alignment = {
+      frontCamber: new CamberValue(frontCamber, false),
+      rearCamber: new CamberValue(rearCamber, false),
+      frontToe: new ToeValue(0, false),
+      rearToe: new ToeValue(0, false),
+      caster: new CasterValue(7, false),
+    };
+    r.swayBars = { front: new SwayBarValue(20), rear: new SwayBarValue(20) };
+    r.aero = { message: '', frontLabel: 'Min', frontValue: 0, rearLabel: 'Min', rearValue: 0 };
+    r.differentials = new Differentials(
+      new DifferentialValue(100, 0),
+      new DifferentialValue(100, 0),
+      70
+    );
   }
 
   /** Rally damping coefficient (Se.stepd). */
@@ -521,20 +891,20 @@ export class TuneCalculator {
   }
 
   private stepDamping(): void {
-    if (this.isRally) {
-      this.stepDampingRally();
-      return;
-    }
+    if (this.isRally) return this.stepDampingRally();
+    if (this.isTruckLike) return this.stepDampingTruck();
+
     const dry = this.req.tuneType === TuneType.Dry;
     const drift = this.req.tuneType === TuneType.Drift;
-    if (dry || drift) {
-      this.dampingDryDrift();
-      return;
-    }
+    if (dry || drift) return this.dampingDryDrift();
 
+    // Rain / Drag share the base step04 model. Drag overrides the damping
+    // coefficient (stepd → 1.38) and uses an identity rate map; Rain uses the
+    // standard 0.77 coefficient and the FH5 1..13→1..20 map.
+    const isDrag = this.req.tuneType === TuneType.Drag;
     const nFront = 2 * Math.sqrt((this.E14 / 2) * this.E16);
     const nRear = 2 * Math.sqrt((this.E15 / 2) * this.E17);
-    const ratio = this.dampingRatio();
+    const ratio = isDrag ? 1.38 : this.dampingRatio();
     let l = nFront * (ratio * this.p09) * 0.00101972;
     let u = nRear * (ratio * this.p10) * 0.00101972;
     l *= 1.1;
@@ -551,12 +921,13 @@ export class TuneCalculator {
     const m = u / (h - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08) + 1);
     const reboundFront = l - g;
     const reboundRear = u - m;
+    const map = isDrag ? (n: number) => n : (n: number) => this.mapDamping(n);
 
     this.result.damping = {
-      frontBump: new DampingValue(this.mapDamping(g), false, this.req.tuneType, DamperType.Bump),
-      rearBump: new DampingValue(this.mapDamping(m), false, this.req.tuneType, DamperType.Bump),
-      frontRebound: new DampingValue(this.mapDamping(reboundFront), false, this.req.tuneType, DamperType.Rebound),
-      rearRebound: new DampingValue(this.mapDamping(reboundRear), false, this.req.tuneType, DamperType.Rebound),
+      frontBump: new DampingValue(map(g), false, this.req.tuneType, DamperType.Bump),
+      rearBump: new DampingValue(map(m), false, this.req.tuneType, DamperType.Bump),
+      frontRebound: new DampingValue(map(reboundFront), false, this.req.tuneType, DamperType.Rebound),
+      rearRebound: new DampingValue(map(reboundRear), false, this.req.tuneType, DamperType.Rebound),
     };
   }
 
@@ -678,6 +1049,7 @@ export class TuneCalculator {
   }
 
   private stepDifferentials(): void {
+    if (this.req.tuneType === TuneType.Drift) return this.driftStep07();
     // FH5 differential ranges already set as field defaults.
     let e = 1;
     let iAdj = 1;

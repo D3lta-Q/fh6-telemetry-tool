@@ -197,8 +197,10 @@ export class SwayBarValue extends TuneValue {
 
 /** Brake balance + force. */
 export class BrakeValue {
-  private _force = 100;
-  constructor(private _balance: number) {}
+  private _force: number;
+  constructor(private _balance: number, force = 100) {
+    this._force = force;
+  }
   /** Front brake bias as a percentage string-free number. */
   get balance(): number {
     return this._balance;

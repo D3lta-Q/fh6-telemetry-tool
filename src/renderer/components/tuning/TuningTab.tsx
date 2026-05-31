@@ -8,6 +8,7 @@ import {
   Drivetrain,
   TuneType,
   EngineLocation,
+  tuneTypesForSurface,
   kgToLb,
   lbToKg,
   WEIGHT_UNIT_LABELS,
@@ -82,6 +83,15 @@ export function TuningTab() {
   const [drivetrain, setDrivetrain] = useState<Drivetrain>(Drivetrain.RWD);
   const [surfaceId, setSurfaceId] = useState(SURFACES[0].id);
   const [tuneType, setTuneType] = useState<TuneType>(TuneType.Dry);
+
+  // Tune types are constrained by the chosen surface (mirrors ForzaTune): paved
+  // surfaces expose the road tunes, loose surfaces the off-road tunes.
+  const allowedTuneTypes = useMemo(() => tuneTypesForSurface(surfaceId), [surfaceId]);
+  const tuneTypeOptions = TUNE_TYPE_LABELS.filter((t) => allowedTuneTypes.includes(t.value));
+
+  useEffect(() => {
+    if (!allowedTuneTypes.includes(tuneType)) setTuneType(allowedTuneTypes[0]);
+  }, [allowedTuneTypes, tuneType]);
 
   const [gearingEnabled, setGearingEnabled] = useState(false);
   const [gearing, setGearing] = useState({ ...EMPTY_GEARING });
@@ -342,7 +352,7 @@ export function TuningTab() {
           <Field label="Tune type">
             <Select
               value={String(tuneType)}
-              options={TUNE_TYPE_LABELS.map((t) => ({ value: String(t.value), label: t.label }))}
+              options={tuneTypeOptions.map((t) => ({ value: String(t.value), label: t.label }))}
               onChange={(v) => setTuneType(Number(v) as TuneType)}
             />
           </Field>

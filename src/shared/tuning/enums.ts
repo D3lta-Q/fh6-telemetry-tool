@@ -51,3 +51,22 @@ export const DRIVETRAIN_LABELS: { value: Drivetrain; label: string }[] = [
   { value: Drivetrain.FWD, label: 'FWD' },
   { value: Drivetrain.AWD, label: 'AWD' },
 ];
+
+/**
+ * Tune types available for each driving surface, mirroring ForzaTune Pro.
+ *
+ * Street (paved) surfaces offer the road-oriented tunes; the loose surfaces
+ * (Dirt or Sand Trails, Cross Country or Off-Road) offer the off-road tunes.
+ * Selecting a surface constrains the tune type so the calculator never receives
+ * a contradictory pairing (e.g. Rally on Street, or Drag on dirt).
+ */
+export const SURFACE_TUNE_TYPES: Record<string, TuneType[]> = {
+  street: [TuneType.Dry, TuneType.Drift, TuneType.Rain, TuneType.Drag],
+  'dirt-sand': [TuneType.Rally, TuneType.Truck, TuneType.Buggy],
+  'off-road': [TuneType.Rally, TuneType.Truck, TuneType.Buggy],
+};
+
+/** Tune types allowed on a given surface id (falls back to road tunes). */
+export function tuneTypesForSurface(surfaceId: string): TuneType[] {
+  return SURFACE_TUNE_TYPES[surfaceId] ?? SURFACE_TUNE_TYPES.street;
+}
