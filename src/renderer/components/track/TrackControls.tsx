@@ -7,11 +7,9 @@ interface TrackControlsProps {
   isTracking: boolean;
   metric: PathColorMetric;
   showValidation: boolean;
-  showCorners: boolean;
   onSetMode: (m: TrackMode) => void;
   onSetMetric: (m: PathColorMetric) => void;
   onToggleValidation: () => void;
-  onToggleCorners: () => void;
   onStart: () => void;
   onStop: () => void;
   onClear: () => void;
@@ -20,8 +18,8 @@ interface TrackControlsProps {
 }
 
 export function TrackControls({
-  mode, isTracking, metric, showValidation, showCorners,
-  onSetMode, onSetMetric, onToggleValidation, onToggleCorners,
+  mode, isTracking, metric, showValidation,
+  onSetMode, onSetMetric, onToggleValidation,
   onStart, onStop, onClear, onOpen, onClosePlayback,
 }: TrackControlsProps) {
   const playbackSession = usePlaybackStore((s) => s.session);
@@ -51,8 +49,6 @@ export function TrackControls({
 
           <ValidationToggle value={showValidation} onChange={onToggleValidation} />
 
-          <CornersToggle value={showCorners} onChange={onToggleCorners} />
-
           <div className="flex-1" />
           <button
             onClick={onClosePlayback}
@@ -80,8 +76,6 @@ export function TrackControls({
           <div className="w-px h-4 bg-border-muted" />
 
           <ValidationToggle value={showValidation} onChange={onToggleValidation} />
-
-          <CornersToggle value={showCorners} onChange={onToggleCorners} />
 
           <div className="flex-1" />
 
@@ -142,30 +136,14 @@ function ValidationToggle({ value, onChange }: { value: boolean; onChange: () =>
   return (
     <button
       onClick={onChange}
-      title="Highlight collision, off-road, airborne, and handbrake sections on the path"
+      title="Highlight collision, off-road, and airborne sections on the path"
       className={`h-7 px-3 rounded border text-[10px] font-mono uppercase tracking-wider transition-colors ${
         value
-          ? 'border-[#ff3c1c]/60 bg-[#ff3c1c]/15 text-[#ff3c1c]'
+          ? 'border-[#ff8c00]/60 bg-[#ff8c00]/15 text-[#ff8c00]'
           : 'border-border-muted bg-bg-input text-text-dim hover:text-text-muted'
       }`}
     >
       Validation
-    </button>
-  );
-}
-
-function CornersToggle({ value, onChange }: { value: boolean; onChange: () => void }) {
-  return (
-    <button
-      onClick={onChange}
-      title="Highlight detected corners with phase colours (green = mid, yellow = exit)"
-      className={`h-7 px-3 rounded border text-[10px] font-mono uppercase tracking-wider transition-colors ${
-        value
-          ? 'border-[#22C55E]/60 bg-[#22C55E]/15 text-[#22C55E]'
-          : 'border-border-muted bg-bg-input text-text-dim hover:text-text-muted'
-      }`}
-    >
-      Corners
     </button>
   );
 }

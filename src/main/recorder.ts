@@ -2,7 +2,7 @@ import { dialog } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import type { TelemetryData, RecordingStatus } from '@shared/telemetry';
 import type { FztSession, TrackFrame, LapInfo, PositionChange, TrackMode } from '@shared/track';
-import { isOffRoad, isAirborne, isCollisionImpulse, isHandbrake } from '@shared/analysis/frameFlags';
+import { isOffRoad, isAirborne, isCollisionImpulse } from '@shared/analysis/frameFlags';
 
 const CAR_CLASS_LETTERS = ['D', 'C', 'B', 'A', 'S1', 'S2', 'X', 'P'];
 const MIN_STEP_M = 0.3;
@@ -125,7 +125,6 @@ export class Recorder {
       offRoad: isOffRoad(data),
       airborne: isAirborne(data),
       collision: isCollisionImpulse(data),
-      handbrake: isHandbrake(data),
       racePos: data.racePosition,
       lapNumber: data.lapNumber,
       currentLap: data.currentLap,

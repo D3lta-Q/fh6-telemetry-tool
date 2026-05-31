@@ -40,7 +40,6 @@ export interface TrackFrame {
   offRoad?: boolean;
   airborne?: boolean;
   collision?: boolean;
-  handbrake?: boolean;
   /** Current race position (1-based). 0 if not in race. */
   racePos: number;
   lapNumber: number;

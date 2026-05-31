@@ -23,7 +23,6 @@ export function TrackTab() {
   const loadSession = usePlaybackStore((s) => s.loadSession);
 
   const [showValidation, setShowValidation] = useState(false);
-  const [showCorners, setShowCorners] = useState(false);
 
   const handleStart = () => startTracking(mode);
   const handleStop = () => stopTracking();
@@ -44,11 +43,9 @@ export function TrackTab() {
         isTracking={isTracking}
         metric={colorMetric}
         showValidation={showValidation}
-        showCorners={showCorners}
         onSetMode={setMode}
         onSetMetric={setColorMetric}
         onToggleValidation={() => setShowValidation((v) => !v)}
-        onToggleCorners={() => setShowCorners((v) => !v)}
         onStart={handleStart}
         onStop={handleStop}
         onClear={clearPath}
@@ -60,7 +57,6 @@ export function TrackTab() {
         isTracking={isTracking}
         metric={colorMetric}
         showValidation={showValidation}
-        showCorners={showCorners}
       />
     </div>
   );
