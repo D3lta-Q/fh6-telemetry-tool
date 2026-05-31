@@ -131,7 +131,12 @@ function buildPhaseSegments(
 ): Pt3[] {
   const pts: Pt3[] = [];
   for (let i = 1; i < frames.length; i++) {
-    if (derived[i - 1]?.phase === phase && derived[i]?.phase === phase) {
+    const a = derived[i - 1];
+    const b = derived[i];
+    // Stay within a single corner; include the boundary segment so adjacent
+    // phases (mid → exit) meet cleanly instead of leaving a one-frame gap.
+    if (!a || !b || a.cornerId < 0 || a.cornerId !== b.cornerId) continue;
+    if (a.phase === phase || b.phase === phase) {
       const p = frames[i - 1], c = frames[i];
       pts.push([p.x, p.y + yOff, p.z], [c.x, c.y + yOff, c.z]);
     }

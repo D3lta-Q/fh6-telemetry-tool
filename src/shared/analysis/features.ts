@@ -37,8 +37,14 @@ export const STEER_TURNING = 0.08;
 export const BOTTOMING_TRAVEL = 0.95;
 /** Minimum corner length in frames (~0.2s) to be analysed. */
 const MIN_CORNER_FRAMES = 12;
-/** Bridge gaps up to this many non-turning frames within one corner. */
-const CORNER_GAP_BRIDGE = 8;
+/** Signed line-curvature (1/m) a corner must reach somewhere to count (radius < 250 m). */
+const CORNER_ENTER_K = 0.004;
+/** Curvature (1/m) a corner is held together above, with hysteresis (radius < ~450 m). */
+const CORNER_STAY_K = 0.0022;
+/** Same-direction corners separated by less than this arc length (m) are merged. */
+const CORNER_BRIDGE_DIST = 30;
+/** Minimum total heading change (rad, ~23°) for a run to count as a real corner. */
+const CORNER_MIN_TURN = 0.4;
 
 // ---- path-geometry tuning ----------------------------------------------------
 /** Target half-window arc length (m) for the curvature estimate. */
@@ -52,7 +58,7 @@ const CURV_SMOOTH = 4;
 /** Curvatures flatter than this radius (m) are treated as straight. */
 const MAX_RADIUS = 1000;
 /** Fraction of peak curvature that still counts as the apex ("mid") zone. */
-const MID_CURV_FRAC = 0.6;
+const MID_CURV_FRAC = 0.55;
 /** Apex positions within this distance (m) are taken to be the same corner. */
 const CORNER_MATCH_DIST = 30;
 
@@ -293,44 +299,77 @@ function computeGeometry(frames: Frame[]): void {
   }
 }
 
-function isTurning(f: Frame): boolean {
-  return f.valid && (Math.abs(f.steer) > STEER_TURNING || Math.abs(f.latG) > CORNER_G);
-}
-
 /**
- * Group valid frames into corners and tag each frame's phase
- * (entry → turn-in, mid → around the geometric apex, exit → unwinding on power),
- * then link repeats of the same physical corner across laps by apex position.
- * Returns the detected corners.
+ * Group frames into corners from the driven line's curvature, then tag each
+ * frame's phase (entry → turn-in, mid → around the geometric apex, exit →
+ * unwinding on power) and link repeats of the same physical corner across laps.
+ *
+ * Detection works on the smoothed signed curvature (1/m) rather than steering or
+ * lateral g, so it reflects the line the car actually traced and is not fooled
+ * by steering corrections on a straight. It uses:
+ *   - hysteresis: a run is held together while |curvature| stays above STAY_K
+ *     but only counts if it reaches the tighter ENTER_K somewhere;
+ *   - direction splitting: a run breaks when the curvature sign flips, so an
+ *     esse / chicane becomes separate corners;
+ *   - distance merging: two same-direction runs split by a short near-straight
+ *     (e.g. a momentary steering unwind mid-corner) are merged back together;
+ *   - a minimum total heading change, which rejects brief twitches that never
+ *     actually turn the car.
  */
 export function segmentCorners(frames: Frame[]): Corner[] {
   const N = frames.length;
-  const corners: Corner[] = [];
+  if (N < 3) return [];
+
+  // Per-step arc length in the world X-Z plane (for merge gaps and turn angle).
+  const ds = new Float64Array(N);
+  const s = new Float64Array(N);
+  for (let i = 1; i < N; i++) {
+    ds[i] = Math.hypot(frames[i].posX - frames[i - 1].posX, frames[i].posZ - frames[i - 1].posZ);
+    s[i] = s[i - 1] + ds[i];
+  }
+
+  // Pass 1 — raw runs above STAY_K, broken whenever the turn direction flips.
+  interface Run { start: number; end: number; sign: number; peak: number }
+  const runs: Run[] = [];
   let i = 0;
-
   while (i < N) {
-    if (!isTurning(frames[i])) {
-      i++;
-      continue;
-    }
-    // Extend the corner, bridging short gaps of non-turning frames.
+    if (Math.abs(frames[i].curvature) <= CORNER_STAY_K) { i++; continue; }
+    const sign = Math.sign(frames[i].curvature);
     let end = i;
-    let gap = 0;
+    let peak = Math.abs(frames[i].curvature);
     for (let j = i + 1; j < N; j++) {
-      if (isTurning(frames[j])) {
-        end = j;
-        gap = 0;
-      } else if (++gap > CORNER_GAP_BRIDGE) {
-        break;
-      }
+      const k = frames[j].curvature;
+      if (Math.abs(k) <= CORNER_STAY_K || Math.sign(k) !== sign) break;
+      end = j;
+      if (Math.abs(k) > peak) peak = Math.abs(k);
     }
-
-    const len = end - i + 1;
-    const hasRealCorner = frames.slice(i, end + 1).some((f) => Math.abs(f.latG) > CORNER_G);
-    if (len >= MIN_CORNER_FRAMES && hasRealCorner) {
-      corners.push(buildCorner(frames, i, end, corners.length));
-    }
+    runs.push({ start: i, end, sign, peak });
     i = end + 1;
+  }
+
+  // Pass 2 — drop runs that never get tight enough (hysteresis).
+  const tight = runs.filter((r) => r.peak >= CORNER_ENTER_K);
+
+  // Pass 3 — merge same-direction runs separated by a short near-straight.
+  const merged: Run[] = [];
+  for (const r of tight) {
+    const last = merged[merged.length - 1];
+    if (last && last.sign === r.sign && s[r.start] - s[last.end] < CORNER_BRIDGE_DIST) {
+      last.end = r.end;
+      last.peak = Math.max(last.peak, r.peak);
+    } else {
+      merged.push({ ...r });
+    }
+  }
+
+  // Pass 4 — keep runs that are long enough and actually change heading.
+  const corners: Corner[] = [];
+  for (const r of merged) {
+    if (r.end - r.start + 1 < MIN_CORNER_FRAMES) continue;
+    let turn = 0;
+    for (let k = r.start + 1; k <= r.end; k++) turn += frames[k].curvature * ds[k];
+    if (Math.abs(turn) < CORNER_MIN_TURN) continue;
+    corners.push(buildCorner(frames, r.start, r.end, corners.length));
   }
 
   clusterCorners(corners);
@@ -339,51 +378,30 @@ export function segmentCorners(frames: Frame[]): Corner[] {
 
 /** Tag a corner's frames with phase and return its geometry summary. */
 function buildCorner(frames: Frame[], start: number, end: number, id: number): Corner {
-  // Geometric apex = peak |curvature| (tightest point of the driven line). Fall
-  // back to minimum speed when the geometry is degenerate (position barely
-  // moved, e.g. a very slow hairpin or a telemetry gap).
+  // Apex = peak |curvature| (tightest point of the driven line).
   let apex = start;
   let peakK = 0;
   for (let k = start; k <= end; k++) {
     const ak = Math.abs(frames[k].curvature);
-    if (ak > peakK) {
-      peakK = ak;
-      apex = k;
-    }
-  }
-  const geometric = peakK > 1 / MAX_RADIUS;
-  if (!geometric) {
-    let minSpeed = Infinity;
-    for (let k = start; k <= end; k++) {
-      if (frames[k].speed < minSpeed) {
-        minSpeed = frames[k].speed;
-        apex = k;
-      }
-    }
+    if (ak > peakK) { peakK = ak; apex = k; }
   }
 
+  // Mid = one contiguous band around the apex where curvature stays high. Growing
+  // outward from the apex (rather than thresholding each frame independently)
+  // guarantees a single mid block, so the overlay shows one green and one yellow
+  // segment per corner instead of fragmenting on curvature noise.
   const midK = peakK * MID_CURV_FRAC;
-  const apexWin = 5; // fallback ± window when geometry is unavailable
+  let midStart = apex;
+  let midEnd = apex;
+  while (midStart > start && Math.abs(frames[midStart - 1].curvature) >= midK) midStart--;
+  while (midEnd < end && Math.abs(frames[midEnd + 1].curvature) >= midK) midEnd++;
 
   for (let k = start; k <= end; k++) {
     const f = frames[k];
     f.cornerId = id;
-    if (geometric) {
-      // The high-curvature band around the apex is "mid" regardless of pedal
-      // input — this is what stops full-throttle apex frames being mislabeled
-      // as "exit". Lower-curvature frames are entry (before) or exit (after).
-      if (Math.abs(f.curvature) >= midK) f.phase = 'mid';
-      else if (k < apex) f.phase = 'entry';
-      else f.phase = 'exit';
-    } else if (Math.abs(k - apex) <= apexWin) {
-      f.phase = 'mid';
-    } else if (k < apex && (f.brake > 0.15 || f.longG < -0.12)) {
-      f.phase = 'entry';
-    } else if (k > apex && f.throttle > 0.15) {
-      f.phase = 'exit';
-    } else {
-      f.phase = 'mid';
-    }
+    if (k < midStart) f.phase = 'entry';
+    else if (k > midEnd) f.phase = 'exit';
+    else f.phase = 'mid';
   }
 
   return {
