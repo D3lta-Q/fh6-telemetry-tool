@@ -225,6 +225,12 @@ function CameraFit({ laps, trigger }: { laps: LapData[]; trigger: number }) {
     const dist = spread * 0.75;
     camera.position.set(cx, cy + dist * 0.9, cz + dist * 0.5);
     camera.lookAt(cx, cy, cz);
+    // Scale the clip planes to the track size — a long lap can span several km,
+    // which would otherwise fall outside the default far plane and render blank.
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.near = Math.max(0.1, dist / 1000);
+    cam.far = Math.max(5000, dist * 10);
+    cam.updateProjectionMatrix();
     const oc = controls as any;
     if (oc?.target) { oc.target.set(cx, cy, cz); oc.update(); }
   }, [trigger]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -241,9 +247,9 @@ function Scene({ laps, visibleLaps, fitTrigger }: {
       <ambientLight intensity={0.6} />
       <directionalLight position={[50, 100, 50]} intensity={1.2} castShadow />
       <Grid
-        args={[2000, 2000]} cellSize={10} cellColor="#1a1a2e"
+        args={[10000, 10000]} cellSize={10} cellColor="#1a1a2e"
         sectionSize={100} sectionColor="#2a2a4e"
-        fadeDistance={800} position={[0, -0.05, 0]}
+        fadeDistance={8000} infiniteGrid position={[0, -0.05, 0]}
       />
       <CameraFit laps={laps} trigger={fitTrigger} />
       {laps.map((lap) =>
@@ -359,7 +365,7 @@ export function TestLapViewer({ packets, tuneType, onClose }: Props) {
       {/* ── Canvas ── */}
       <div className="relative flex-1 min-h-0 bg-[#050508]">
         <Canvas
-          camera={{ position: [0, 120, 180], fov: 50 }}
+          camera={{ position: [0, 120, 180], fov: 50, near: 0.1, far: 200000 }}
           gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
           onCreated={({ gl }) => gl.setClearColor(new THREE.Color('#050508'))}
         >
