@@ -17,8 +17,10 @@ import {
   type Suggestion,
   type TestLapResult,
 } from '@shared/analysis';
+import type { TelemetryData } from '@shared/telemetry';
 import type { TuningUnits } from '../../store/tuningStore';
 import { useTestLapRecorder } from '../../hooks/useTestLapRecorder';
+import { TestLapViewer } from './TestLapViewer';
 
 /**
  * Tune Refinement view.
@@ -50,6 +52,8 @@ export function RefinementPanel({
   const [baseParams, setBaseParams] = useState<TuneParam[]>(() => flattenTune(result));
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [analysis, setAnalysis] = useState<TestLapResult | null>(null);
+  const [lastPackets, setLastPackets] = useState<TelemetryData[] | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const { recording, frameCount, start, stop } = useTestLapRecorder();
 
@@ -83,9 +87,11 @@ export function RefinementPanel({
     if (!recording) {
       setSuggestions(null);
       setAnalysis(null);
+      setLastPackets(null);
       start();
     } else {
       const packets = stop();
+      setLastPackets(packets);
       const res = analyzeTestLap(packets, baseParams, { tuneType, drivetrain });
       setAnalysis(res);
       setSuggestions(res.ok && res.suggestions.length > 0 ? res.suggestions : null);
@@ -151,7 +157,25 @@ export function RefinementPanel({
         >
           ↺ Reset Tuning Values
         </button>
+        {lastPackets && lastPackets.length > 0 && (
+          <button
+            onClick={() => setViewerOpen(true)}
+            className="h-8 px-3 rounded text-[11px] font-mono uppercase tracking-wider border border-[#00d4ff]/40 bg-[#00d4ff]/10 text-[#00d4ff] hover:bg-[#00d4ff]/20 transition-colors"
+            title="Open 3D viewer for the completed test lap"
+          >
+            View Test Lap
+          </button>
+        )}
       </div>
+
+      {/* Test Lap 3D viewer modal */}
+      {viewerOpen && lastPackets && (
+        <TestLapViewer
+          packets={lastPackets}
+          tuneType={tuneType}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
 
       {/* Status / findings */}
       {recording && (
