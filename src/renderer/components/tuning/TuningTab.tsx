@@ -157,6 +157,7 @@ export function TuningTab() {
       tuneType,
       gearingEnabled,
       gearing,
+      modifiers,
       refinementParams: refinementParamsRef.current,
     };
     await window.forza.saveTune(tune);
@@ -177,6 +178,7 @@ export function TuningTab() {
     setTuneType(tune.tuneType as TuneType);
     setGearingEnabled(tune.gearingEnabled);
     setGearing(tune.gearing as typeof gearing);
+    setModifiers({ ...DEFAULT_MODIFIERS, ...(tune.modifiers ?? {}) });
     setLoadedParams(tune.refinementParams);
     setLoadVersion((v) => v + 1);
   };

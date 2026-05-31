@@ -1,5 +1,6 @@
 import type { TuneParam } from '@shared/analysis/params';
 import type { Car } from './cars';
+import type { TuneModifiers } from './calculator';
 
 export interface SavedTuneMeta {
   id: string;
@@ -32,4 +33,7 @@ export interface SavedTune extends SavedTuneMeta {
   gearingEnabled: boolean;
   gearing: Record<string, string>;
   refinementParams: TuneParam[];
+  /** Customize-panel slider state. Optional for backward-compatibility with
+   * tunes saved before this field existed (those default to neutral 100). */
+  modifiers?: TuneModifiers;
 }
