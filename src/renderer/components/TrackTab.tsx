@@ -15,6 +15,7 @@ export function TrackTab() {
   const isTracking = useTrackStore((s) => s.isTracking);
   const startTracking = useTrackStore((s) => s.startTracking);
   const stopTracking = useTrackStore((s) => s.stopTracking);
+  const clearPath = useTrackStore((s) => s.clearPath);
   const mode = useTrackStore((s) => s.mode);
   const setMode = useTrackStore((s) => s.setMode);
   const colorMetric = useTrackStore((s) => s.colorMetric);
@@ -47,6 +48,7 @@ export function TrackTab() {
         onToggleValidation={() => setShowValidation((v) => !v)}
         onStart={handleStart}
         onStop={handleStop}
+        onClear={clearPath}
         onOpen={() => void handleOpen()}
         onClosePlayback={handleClosePlayback}
       />

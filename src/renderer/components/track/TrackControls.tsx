@@ -12,6 +12,7 @@ interface TrackControlsProps {
   onToggleValidation: () => void;
   onStart: () => void;
   onStop: () => void;
+  onClear: () => void;
   onOpen: () => void;
   onClosePlayback: () => void;
 }
@@ -19,7 +20,7 @@ interface TrackControlsProps {
 export function TrackControls({
   mode, isTracking, metric, showValidation,
   onSetMode, onSetMetric, onToggleValidation,
-  onStart, onStop, onOpen, onClosePlayback,
+  onStart, onStop, onClear, onOpen, onClosePlayback,
 }: TrackControlsProps) {
   const playbackSession = usePlaybackStore((s) => s.session);
   const isPlayback = playbackSession !== null && playbackSession.frames.length > 0;
@@ -84,6 +85,15 @@ export function TrackControls({
             className="h-7 px-3 rounded border border-border-muted bg-bg-input text-[10px] font-mono uppercase tracking-wider text-text-muted hover:text-text hover:border-border transition-colors"
           >
             Open .fzt
+          </button>
+
+          {/* Clear path */}
+          <button
+            onClick={onClear}
+            className="h-7 px-3 rounded border border-border-muted bg-bg-input text-[10px] font-mono uppercase tracking-wider text-text-dim hover:text-accent-red hover:border-accent-red/40 transition-colors"
+            title="Clear the current path"
+          >
+            Clear
           </button>
 
           {/* Tracking toggle */}
