@@ -3,8 +3,9 @@
  *
  * Takes the raw telemetry packets recorded during a test lap, derives a clean
  * per-frame feature set, rejects driver/artefact confounds, segments the lap
- * into corners and corner phases, then runs a battery of physics-based
- * diagnostics that map onto concrete, bounded tune adjustments.
+ * into corners and corner phases (using the car's world position to find the
+ * geometric apex and to match the same corner across laps), then runs a battery
+ * of physics-based diagnostics that map onto concrete, bounded tune adjustments.
  *
  * Design philosophy
  * -----------------
@@ -17,11 +18,14 @@
  * over-correcting on a single noisy one.
  *
  * Key signals (all derived in features.ts):
- *   - driver inputs (steer, throttle, brake, handbrake) for phase segmentation
- *     and confound rejection
- *   - steering-vs-yaw, cross-checked against axle slip-angle balance, for the
- *     headline understeer/oversteer call (with a confidence from their
- *     agreement)
+ *   - world-position path curvature for geometric apex / phase segmentation and
+ *     cross-lap corner matching (a fault at the same corner on multiple laps is
+ *     trusted and corrected harder than a one-off)
+ *   - driver inputs (steer, throttle, brake, handbrake) for confound rejection
+ *     and to tell power oversteer (diff/centre-split) from a spring/bar balance
+ *   - steering-vs-yaw, cross-checked against axle slip-angle balance and
+ *     per-corner balance, for the headline understeer/oversteer call (with a
+ *     confidence from their agreement)
  *   - sideslip + counter-steer for entry instability / snap oversteer
  *   - per-axle lock-up for brake bias
  *   - drive-wheel slip for corner-exit traction
@@ -41,6 +45,7 @@ import {
   percentile,
   BOTTOMING_TRAVEL,
   type Frame,
+  type Corner,
 } from './features';
 
 /** Brake fraction (0..1) above which a frame counts as "hard braking". */
@@ -108,7 +113,11 @@ function nudge(
   if (Math.abs(to - param.value) < 1e-6) return; // already at the rail
   const existing = out.find((s) => s.paramId === id);
   if (existing) {
-    existing.to = to;
+    // Two diagnostics can target the same parameter (e.g. mid-corner oversteer
+    // and corner-exit wheelspin both want less rear diff lock). Keep the more
+    // aggressive move — the one furthest from the current value — and the
+    // strongest confidence/reason behind it.
+    if (Math.abs(to - param.value) > Math.abs(existing.to - param.value)) existing.to = to;
     if (CONF_SCALE[confidence] > CONF_SCALE[existing.confidence]) {
       existing.confidence = confidence;
       existing.reason = reason;
@@ -123,6 +132,32 @@ function frac(params: TuneParam[], id: string, f: number): number {
   const p = params.find((x) => x.id === id);
   if (!p) return 0;
   return (p.max - p.min) * f;
+}
+
+/**
+ * Map how far a signal overshoots its threshold into a 1..max severity
+ * multiplier on the nudge size, so a mild trait gets a gentle correction and a
+ * severe one gets a decisively bigger step (still bounded, still clamped to the
+ * parameter's range). `perStep` is the overshoot that adds one whole unit.
+ */
+function severity(value: number, thresh: number, perStep: number, max = 2.5): number {
+  if (value <= thresh || perStep <= 0) return 1;
+  return Math.min(max, 1 + (value - thresh) / perStep);
+}
+
+/**
+ * Mean front-minus-rear slip-angle balance over a corner's mid (apex-zone)
+ * frames. >0 understeer, <0 oversteer. NaN when the corner has too few clean
+ * apex frames to judge.
+ */
+function cornerMidBalance(frames: Frame[], corner: Corner): number {
+  const mids: Frame[] = [];
+  for (let k = corner.start; k <= corner.end; k++) {
+    const f = frames[k];
+    if (f.valid && f.phase === 'mid') mids.push(f);
+  }
+  if (mids.length < 5) return NaN;
+  return mean(mids.map((f) => f.frontSlipAngle)) - mean(mids.map((f) => f.rearSlipAngle));
 }
 
 export function analyzeTestLap(
@@ -155,7 +190,8 @@ export function analyzeTestLap(
 
   const looseTune = isLooseSurfaceTune(ctx.tuneType);
   const frames = deriveFrames(packets, looseTune);
-  stats.corners = segmentCorners(frames);
+  const corners = segmentCorners(frames);
+  stats.corners = corners.length;
 
   for (const f of frames) {
     if (f.collision) stats.excludedCollision++;
@@ -188,7 +224,7 @@ export function analyzeTestLap(
     };
   }
 
-  diagnoseBalance(mid, params, ctx, looseTune, findings, suggestions);
+  diagnoseBalance(mid, frames, corners, params, ctx, looseTune, findings, suggestions);
   diagnoseEntryStability(entry, frames, params, ctx, findings, suggestions);
   diagnoseBraking(braking, params, findings, suggestions);
   diagnoseExitTraction(exit, params, ctx, findings, suggestions);
@@ -223,6 +259,8 @@ export function analyzeTestLap(
  */
 function diagnoseBalance(
   mid: Frame[],
+  frames: Frame[],
+  corners: Corner[],
   params: TuneParam[],
   ctx: AnalysisContext,
   looseTune: boolean,
@@ -260,7 +298,7 @@ function diagnoseBalance(
   const understeer = slipUnder || yawUnder;
   const oversteer = slipOver || yawOver;
 
-  // Confidence from agreement between the two measures.
+  // Confidence from agreement between the two pooled measures.
   const conf = (a: boolean, b: boolean): Confidence => {
     if (a && b) return 'high';
     // disagreement (one says under, the other over) → low
@@ -268,12 +306,31 @@ function diagnoseBalance(
     return 'medium';
   };
 
+  // 3) Per-corner corroboration + cross-lap persistence. Each corner gets its
+  //    own apex-zone balance; a trait that recurs at the SAME corner across
+  //    laps is a real tune fault, not a one-off, so we trust it (raise
+  //    confidence) and correct it harder (raise severity).
+  const perCorner = corners
+    .map((cn) => ({ cn, b: cornerMidBalance(frames, cn) }))
+    .filter((x) => Number.isFinite(x.b));
+  const overCorners = perCorner.filter((x) => x.b < -slipThresh).map((x) => x.cn);
+  const underCorners = perCorner.filter((x) => x.b > slipThresh).map((x) => x.cn);
+  const total = Math.max(1, perCorner.length);
+
   if (understeer && !oversteer) {
-    const c = conf(slipUnder, yawUnder);
-    const sev = Math.min(2, 1 + Math.floor(Math.max(0, slipBalance - slipThresh) / slipThresh));
+    let c = conf(slipUnder, yawUnder);
+    let sev = severity(slipBalance, slipThresh, slipThresh);
+    if (underCorners.length / total > 0.5) sev = Math.max(sev, 1.4);
+    const persists = hasPersistentCluster(underCorners);
+    if (persists && c !== 'low') {
+      c = 'high';
+      sev = Math.max(sev, 1.6);
+    }
     findings.push(
       `Mid-corner understeer (front slips ${(slipBalance * (180 / Math.PI)).toFixed(1)}° more than rear` +
-        `${yawUnder ? ', yaw response confirms' : ''}) — ${c} confidence. Freeing up the front.`
+        `${yawUnder ? ', yaw response confirms' : ''}) — ${c} confidence.` +
+        affectedNote(underCorners.length, perCorner.length, persists) +
+        ' Freeing up the front.'
     );
     if (c === 'low') return; // measures disagree: report only, don't change the car
     nudge(params, 'arbFront', -4 * sev, 'Soften front ARB to reduce understeer', c, suggestions);
@@ -281,22 +338,58 @@ function diagnoseBalance(
     nudge(params, 'camberFront', -0.3 * sev, 'Add front negative camber for grip', c, suggestions);
     nudge(params, 'arbRear', +3 * sev, 'Stiffen rear ARB to help the car rotate', c, suggestions);
   } else if (oversteer && !understeer) {
-    const c = conf(slipOver, yawOver);
-    const sev = Math.min(2, 1 + Math.floor(Math.max(0, -slipBalance - slipThresh) / slipThresh));
+    let c = conf(slipOver, yawOver);
+    let sev = severity(-slipBalance, slipThresh, slipThresh);
+    if (overCorners.length / total > 0.5) sev = Math.max(sev, 1.4);
+    const persists = hasPersistentCluster(overCorners);
+    if (persists && c !== 'low') {
+      c = 'high';
+      sev = Math.max(sev, 1.6);
+    }
+
+    // Is the rear letting go ON POWER at the apex? That's power oversteer, and
+    // it points at the differential (and, on AWD, the centre split) more than
+    // at springs/bars.
+    const powerShare = mid.filter((f) => f.throttle > THROTTLE_ON).length / Math.max(1, mid.length);
+    const powerOversteer = powerShare > 0.3;
+    const awdPower = ctx.drivetrain === Drivetrain.AWD && powerOversteer;
+
     findings.push(
-      `Mid-corner oversteer (rear slips ${(-slipBalance * (180 / Math.PI)).toFixed(1)}° more than front` +
-        `${yawOver ? ', yaw response confirms' : ''}) — ${c} confidence. Stabilising the rear.`
+      `Mid-corner oversteer${powerOversteer ? ' under power' : ''} ` +
+        `(rear slips ${(-slipBalance * (180 / Math.PI)).toFixed(1)}° more than front` +
+        `${yawOver ? ', yaw response confirms' : ''}) — ${c} confidence.` +
+        affectedNote(overCorners.length, perCorner.length, persists) +
+        ` Stabilising the rear${awdPower ? ' and shifting the AWD split forward' : ''}.`
     );
     if (c === 'low') return;
     nudge(params, 'arbRear', -4 * sev, 'Soften rear ARB to reduce oversteer', c, suggestions);
     nudge(params, 'springRear', -frac(params, 'springRear', 0.06 * sev), 'Soften rear springs', c, suggestions);
     nudge(params, 'arbFront', +3 * sev, 'Stiffen front ARB to settle the rear', c, suggestions);
     if (ctx.drivetrain !== Drivetrain.FWD) {
-      nudge(params, 'diffRearAccel', -6 * sev, 'Reduce rear accel diff lock', c, suggestions);
+      const diffDelta = powerOversteer ? -8 * sev : -6 * sev;
+      nudge(params, 'diffRearAccel', diffDelta, 'Reduce rear accel diff lock to curb power oversteer', c, suggestions);
+    }
+    if (awdPower) {
+      nudge(params, 'diffCenter', -6 * sev, 'Send more torque to the front (less rear bias) to curb power oversteer', c, suggestions);
     }
   } else {
     findings.push('Cornering balance looks neutral — no major understeer or oversteer.');
   }
+}
+
+/** True when any cluster (same physical corner) shows the trait ≥2 times. */
+function hasPersistentCluster(corners: Corner[]): boolean {
+  const byCluster = new Map<number, number>();
+  for (const c of corners) byCluster.set(c.clusterId, (byCluster.get(c.clusterId) ?? 0) + 1);
+  for (const n of byCluster.values()) if (n >= 2) return true;
+  return false;
+}
+
+/** Human-readable "N/M corners affected" clause, noting cross-lap persistence. */
+function affectedNote(affected: number, total: number, persists: boolean): string {
+  if (total === 0 || affected === 0) return '';
+  const base = ` ${affected}/${total} corners affected.`;
+  return persists ? `${base} Same corner(s) across laps — treating as a real tune fault.` : base;
 }
 
 /**
@@ -377,16 +470,23 @@ function diagnoseExitTraction(
     const rearSpin = mean(onPower.map((f) => f.rearSpin));
     if (rearSpin > 0.12) {
       const c: Confidence = rearSpin > 0.2 ? 'high' : 'medium';
+      const sev = severity(rearSpin, 0.12, 0.12);
       findings.push('Rear wheelspin on corner exit. Reducing rear acceleration diff lock.');
-      nudge(params, 'diffRearAccel', -8, 'Reduce rear accel diff lock to limit wheelspin', c, suggestions);
+      nudge(params, 'diffRearAccel', -8 * sev, 'Reduce rear accel diff lock to limit wheelspin', c, suggestions);
+      // On AWD, the rear spinning up on exit also means too much torque is going
+      // rearward — ease the centre split forward as well.
+      if (ctx.drivetrain === Drivetrain.AWD) {
+        nudge(params, 'diffCenter', -5 * sev, 'Shift torque split forward to reduce rear wheelspin on exit', c, suggestions);
+      }
     }
   }
   if (ctx.drivetrain !== Drivetrain.RWD) {
     const frontSpin = mean(onPower.map((f) => f.frontSpin));
     if (frontSpin > 0.12) {
       const c: Confidence = frontSpin > 0.2 ? 'high' : 'medium';
+      const sev = severity(frontSpin, 0.12, 0.12);
       findings.push('Front wheelspin / scrabble on corner exit. Reducing front acceleration diff lock.');
-      nudge(params, 'diffFrontAccel', -8, 'Reduce front accel diff lock to limit wheelspin', c, suggestions);
+      nudge(params, 'diffFrontAccel', -8 * sev, 'Reduce front accel diff lock to limit wheelspin', c, suggestions);
     }
   }
 }

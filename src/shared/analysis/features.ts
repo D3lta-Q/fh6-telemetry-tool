@@ -40,7 +40,42 @@ const MIN_CORNER_FRAMES = 12;
 /** Bridge gaps up to this many non-turning frames within one corner. */
 const CORNER_GAP_BRIDGE = 8;
 
+// ---- path-geometry tuning ----------------------------------------------------
+/** Target half-window arc length (m) for the curvature estimate. */
+const CURV_SPAN = 4;
+/** Below this windowed span (m) the curvature estimate is unreliable → 0. */
+const CURV_MIN_SPAN = 1.5;
+/** Frame cap on each side of the curvature window (guards low-speed frames). */
+const CURV_MAX_FRAMES = 30;
+/** ± frames of moving-average smoothing applied to raw curvature. */
+const CURV_SMOOTH = 4;
+/** Curvatures flatter than this radius (m) are treated as straight. */
+const MAX_RADIUS = 1000;
+/** Fraction of peak curvature that still counts as the apex ("mid") zone. */
+const MID_CURV_FRAC = 0.6;
+/** Apex positions within this distance (m) are taken to be the same corner. */
+const CORNER_MATCH_DIST = 30;
+
 export type CornerPhase = 'entry' | 'mid' | 'exit';
+
+/**
+ * One detected corner, with the world-space geometry needed to reason about it
+ * across laps. `clusterId`/`instances` link repeats of the same physical corner
+ * (matched by apex position) so the engine can tell a persistent tune fault
+ * from a one-off driver moment.
+ */
+export interface Corner {
+  id: number;
+  start: number; // first frame index (inclusive)
+  end: number; // last frame index (inclusive)
+  apex: number; // frame index of the geometric apex (peak curvature)
+  apexPosX: number;
+  apexPosZ: number;
+  direction: number; // +1 left-hand, -1 right-hand
+  radius: number; // m at the apex (tightness of the line)
+  clusterId: number; // same physical corner across laps shares a cluster id
+  instances: number; // number of corners in this corner's cluster (≥1)
+}
 
 export interface Frame {
   d: TelemetryData;
@@ -52,6 +87,13 @@ export interface Frame {
   speed: number; // m/s
   yawRate: number; // rad/s (raw angularVelocityY)
   sideslip: number; // rad, atan2(lateral vel, forward vel); large = sliding
+
+  // --- Path geometry (world frame, filled by computeGeometry) ---
+  posX: number; // world position (m)
+  posZ: number;
+  course: number; // rad, world-space travel direction of the driven line
+  curvature: number; // signed 1/m of the driven line (+left-hand, -right-hand)
+  radius: number; // m, 1/|curvature| capped at MAX_RADIUS
 
   // --- Driver inputs ---
   throttle: number; // 0..1
@@ -121,6 +163,11 @@ export function deriveFrames(packets: TelemetryData[], looseTune: boolean): Fram
       speed: d.speed,
       yawRate: d.angularVelocityY,
       sideslip: Math.atan2(d.velocityX, Math.abs(d.velocityZ) < 1e-3 ? 1e-3 : d.velocityZ),
+      posX: d.positionX,
+      posZ: d.positionZ,
+      course: 0,
+      curvature: 0,
+      radius: MAX_RADIUS,
       throttle: d.accel / 255,
       brake: d.brake / 255,
       handbrake,
@@ -172,7 +219,78 @@ export function deriveFrames(packets: TelemetryData[], looseTune: boolean): Fram
     else if (f.offRoad && !looseTune) f.valid = false;
   }
 
+  computeGeometry(frames);
+
   return frames;
+}
+
+/**
+ * Fill per-frame path geometry from world position: travel course, signed line
+ * curvature (1/m) and radius.
+ *
+ * Curvature uses a three-point (Menger) estimate over an arc-length window, so
+ * it reflects the *racing line the car actually traced* — not the chassis yaw,
+ * which diverges from the line whenever the car slides. That distinction is the
+ * whole point: it lets corner segmentation find the true geometric apex (the
+ * tightest point of the line) independently of what the driver is doing with
+ * the throttle and brake, instead of guessing the apex from minimum speed.
+ */
+function computeGeometry(frames: Frame[]): void {
+  const N = frames.length;
+  if (N < 3) return;
+
+  // Cumulative planar arc length in the world X-Z plane.
+  const s = new Array<number>(N).fill(0);
+  for (let i = 1; i < N; i++) {
+    const dx = frames[i].posX - frames[i - 1].posX;
+    const dz = frames[i].posZ - frames[i - 1].posZ;
+    s[i] = s[i - 1] + Math.hypot(dx, dz);
+  }
+
+  const rawK = new Array<number>(N).fill(0);
+  for (let i = 0; i < N; i++) {
+    // Expand a symmetric window until it spans ~CURV_SPAN of track on each side
+    // (or hits the frame cap). Wide enough to be stable, short enough to track
+    // a real corner; the frame cap stops near-stationary frames from spanning
+    // the whole lap.
+    let lo = i;
+    while (lo > 0 && s[i] - s[lo] < CURV_SPAN && i - lo < CURV_MAX_FRAMES) lo--;
+    let hi = i;
+    while (hi < N - 1 && s[hi] - s[i] < CURV_SPAN && hi - i < CURV_MAX_FRAMES) hi++;
+    if (hi - lo < 2 || s[hi] - s[lo] < CURV_MIN_SPAN) continue;
+
+    const ax = frames[lo].posX;
+    const az = frames[lo].posZ;
+    const bx = frames[i].posX;
+    const bz = frames[i].posZ;
+    const cx = frames[hi].posX;
+    const cz = frames[hi].posZ;
+    const ab = Math.hypot(bx - ax, bz - az);
+    const bc = Math.hypot(cx - bx, cz - bz);
+    const ca = Math.hypot(ax - cx, az - cz);
+    const denom = ab * bc * ca;
+    if (denom < 1e-6) continue;
+    // Twice the signed area of triangle ABC (X-Z plane) over the side-length
+    // product is the Menger curvature; the sign gives the turn direction.
+    const cross = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+    rawK[i] = (2 * cross) / denom;
+    frames[i].course = Math.atan2(cx - ax, cz - az);
+  }
+
+  // Smooth curvature with a short moving average to tame 60 Hz position noise.
+  for (let i = 0; i < N; i++) {
+    let sum = 0;
+    let n = 0;
+    const lo = Math.max(0, i - CURV_SMOOTH);
+    const hi = Math.min(N - 1, i + CURV_SMOOTH);
+    for (let j = lo; j <= hi; j++) {
+      sum += rawK[j];
+      n++;
+    }
+    const k = n ? sum / n : 0;
+    frames[i].curvature = k;
+    frames[i].radius = Math.abs(k) > 1 / MAX_RADIUS ? 1 / Math.abs(k) : MAX_RADIUS;
+  }
 }
 
 function isTurning(f: Frame): boolean {
@@ -181,12 +299,13 @@ function isTurning(f: Frame): boolean {
 
 /**
  * Group valid frames into corners and tag each frame's phase
- * (entry → braking/turn-in, mid → around the apex, exit → unwinding on power).
- * Returns the number of corners found.
+ * (entry → turn-in, mid → around the geometric apex, exit → unwinding on power),
+ * then link repeats of the same physical corner across laps by apex position.
+ * Returns the detected corners.
  */
-export function segmentCorners(frames: Frame[]): number {
+export function segmentCorners(frames: Frame[]): Corner[] {
   const N = frames.length;
-  let cornerId = 0;
+  const corners: Corner[] = [];
   let i = 0;
 
   while (i < N) {
@@ -209,31 +328,54 @@ export function segmentCorners(frames: Frame[]): number {
     const len = end - i + 1;
     const hasRealCorner = frames.slice(i, end + 1).some((f) => Math.abs(f.latG) > CORNER_G);
     if (len >= MIN_CORNER_FRAMES && hasRealCorner) {
-      assignPhases(frames, i, end, cornerId);
-      cornerId++;
+      corners.push(buildCorner(frames, i, end, corners.length));
     }
     i = end + 1;
   }
 
-  return cornerId;
+  clusterCorners(corners);
+  return corners;
 }
 
-function assignPhases(frames: Frame[], start: number, end: number, cornerId: number): void {
-  // Apex = minimum-speed frame within the corner.
+/** Tag a corner's frames with phase and return its geometry summary. */
+function buildCorner(frames: Frame[], start: number, end: number, id: number): Corner {
+  // Geometric apex = peak |curvature| (tightest point of the driven line). Fall
+  // back to minimum speed when the geometry is degenerate (position barely
+  // moved, e.g. a very slow hairpin or a telemetry gap).
   let apex = start;
-  let minSpeed = Infinity;
+  let peakK = 0;
   for (let k = start; k <= end; k++) {
-    if (frames[k].speed < minSpeed) {
-      minSpeed = frames[k].speed;
+    const ak = Math.abs(frames[k].curvature);
+    if (ak > peakK) {
+      peakK = ak;
       apex = k;
     }
   }
-  const apexWin = 5; // frames each side of the apex forced to "mid"
+  const geometric = peakK > 1 / MAX_RADIUS;
+  if (!geometric) {
+    let minSpeed = Infinity;
+    for (let k = start; k <= end; k++) {
+      if (frames[k].speed < minSpeed) {
+        minSpeed = frames[k].speed;
+        apex = k;
+      }
+    }
+  }
+
+  const midK = peakK * MID_CURV_FRAC;
+  const apexWin = 5; // fallback ± window when geometry is unavailable
 
   for (let k = start; k <= end; k++) {
     const f = frames[k];
-    f.cornerId = cornerId;
-    if (Math.abs(k - apex) <= apexWin) {
+    f.cornerId = id;
+    if (geometric) {
+      // The high-curvature band around the apex is "mid" regardless of pedal
+      // input — this is what stops full-throttle apex frames being mislabeled
+      // as "exit". Lower-curvature frames are entry (before) or exit (after).
+      if (Math.abs(f.curvature) >= midK) f.phase = 'mid';
+      else if (k < apex) f.phase = 'entry';
+      else f.phase = 'exit';
+    } else if (Math.abs(k - apex) <= apexWin) {
       f.phase = 'mid';
     } else if (k < apex && (f.brake > 0.15 || f.longG < -0.12)) {
       f.phase = 'entry';
@@ -243,6 +385,52 @@ function assignPhases(frames: Frame[], start: number, end: number, cornerId: num
       f.phase = 'mid';
     }
   }
+
+  return {
+    id,
+    start,
+    end,
+    apex,
+    apexPosX: frames[apex].posX,
+    apexPosZ: frames[apex].posZ,
+    direction: Math.sign(frames[apex].curvature) || 1,
+    radius: frames[apex].radius,
+    clusterId: -1,
+    instances: 1,
+  };
+}
+
+/**
+ * Link corners that share an apex location (within CORNER_MATCH_DIST) into
+ * clusters — i.e. the same physical corner taken on different laps. Each
+ * corner's `instances` then reports how many times that corner was driven,
+ * which the engine uses to separate a persistent tune fault from a one-off.
+ */
+function clusterCorners(corners: Corner[]): void {
+  const centroids: { x: number; z: number; n: number }[] = [];
+  for (const c of corners) {
+    let best = -1;
+    let bestD = CORNER_MATCH_DIST;
+    for (let ci = 0; ci < centroids.length; ci++) {
+      const ce = centroids[ci];
+      const d = Math.hypot(c.apexPosX - ce.x, c.apexPosZ - ce.z);
+      if (d < bestD) {
+        bestD = d;
+        best = ci;
+      }
+    }
+    if (best >= 0) {
+      const ce = centroids[best];
+      ce.x = (ce.x * ce.n + c.apexPosX) / (ce.n + 1);
+      ce.z = (ce.z * ce.n + c.apexPosZ) / (ce.n + 1);
+      ce.n++;
+      c.clusterId = best;
+    } else {
+      c.clusterId = centroids.length;
+      centroids.push({ x: c.apexPosX, z: c.apexPosZ, n: 1 });
+    }
+  }
+  for (const c of corners) c.instances = centroids[c.clusterId]?.n ?? 1;
 }
 
 // ---- small statistics helpers shared with the engine -------------------------
