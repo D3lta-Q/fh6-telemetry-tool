@@ -9,6 +9,7 @@ import {
   TuneType,
   EngineLocation,
   tuneTypesForSurface,
+  DEFAULT_MODIFIERS,
   kgToLb,
   lbToKg,
   WEIGHT_UNIT_LABELS,
@@ -19,6 +20,7 @@ import {
   type Car,
   type CarGeometry,
   type TuneRequest,
+  type TuneModifiers,
   type GearingRequest,
 } from '@shared/tuning';
 import type { TuneParam } from '@shared/analysis';
@@ -26,6 +28,7 @@ import type { SavedTune } from '@shared/tuning/savedTune';
 import { SegmentedControl } from '../ui';
 import { useTuningStore } from '../../store/tuningStore';
 import { CarPicker } from './CarPicker';
+import { CustomizeTuneModal } from './CustomizeTuneModal';
 import { ResultsPanel } from './ResultsPanel';
 import { RefinementPanel } from './RefinementPanel';
 import { SavedTunePicker } from './SavedTunePicker';
@@ -97,6 +100,9 @@ export function TuningTab() {
   const [gearing, setGearing] = useState({ ...EMPTY_GEARING });
 
   const [resultsView, setResultsView] = useState<'calculated' | 'refinement'>('calculated');
+  const [modifiers, setModifiers] = useState<TuneModifiers>({ ...DEFAULT_MODIFIERS });
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const isModified = Object.entries(modifiers).some(([, v]) => v !== 100);
 
   // ---- Save / Load tunes -------------------------------------------------------
   const refinementParamsRef = useRef<TuneParam[]>([]);
@@ -248,6 +254,7 @@ export function TuningTab() {
       surface,
       geometry,
       gearing: gearingReq,
+      modifiers,
     };
     try {
       return calculateTune(req);
@@ -265,6 +272,7 @@ export function TuningTab() {
     gearingEnabled,
     gearing,
     units.speed,
+    modifiers,
   ]);
 
   const handleAddToDatabase = () => {
@@ -430,7 +438,8 @@ export function TuningTab() {
       </div>
 
       {/* Results */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+      <div className="flex-1 min-h-0 relative">
+        <div className="h-full overflow-y-auto px-6 py-4">
         {result ? (
           <>
             <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -525,7 +534,41 @@ export function TuningTab() {
             </p>
           </div>
         )}
-      </div>
+        </div>{/* end scrollable */}
+
+        {/* Floating Customize button — visible only on the calculated results view */}
+        {result && resultsView === 'calculated' && (
+          <button
+            onClick={() => setCustomizeOpen(true)}
+            title="Customize tune balance and stiffness"
+            className={`absolute bottom-5 left-5 w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-colors border ${
+              isModified
+                ? 'bg-accent-lime/20 border-accent-lime/50 text-accent-lime'
+                : 'bg-bg-elevated border-border-muted text-text-dim hover:text-text hover:border-border'
+            }`}
+          >
+            {/* Sliders icon */}
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <line x1="2" y1="4.5" x2="16" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="2" y1="13.5" x2="16" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="6" cy="4.5" r="2" fill="currentColor"/>
+              <circle cx="11" cy="9" r="2" fill="currentColor"/>
+              <circle cx="7" cy="13.5" r="2" fill="currentColor"/>
+            </svg>
+          </button>
+        )}
+      </div>{/* end relative wrapper */}
+
+      {/* Customize modal */}
+      {customizeOpen && (
+        <CustomizeTuneModal
+          initial={modifiers}
+          hasGearing={gearingEnabled}
+          onDone={(m) => { setModifiers(m); setCustomizeOpen(false); }}
+          onCancel={() => setCustomizeOpen(false)}
+        />
+      )}
     </div>
   );
 }

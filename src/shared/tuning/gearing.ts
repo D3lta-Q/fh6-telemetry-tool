@@ -39,7 +39,12 @@ export class GearCalculator {
   private finalDrive = 0;
   private firstSpeed = 0;
 
-  constructor(private req: GearingRequest, isMetric: boolean, weightLbs: number) {
+  constructor(
+    private req: GearingRequest,
+    isMetric: boolean,
+    weightLbs: number,
+    private accelTopSpeed = 100
+  ) {
     this.redline = req.redline;
     this.topSpeed = req.topSpeed;
     this.numGears = req.numberOfGears;
@@ -110,7 +115,8 @@ export class GearCalculator {
     const min = (this.topSpeed / this.numGears) * 0.85;
     let e = (this.topSpeed / 0.975 - this.firstSpeed) / (this.numGears - 1);
     if (e < min) e = min;
-    return e * this.speedDifferenceAdjustment();
+    // accelTopSpeed < 100 → tighter ratios (acceleration); > 100 → wider (top speed).
+    return e * this.speedDifferenceAdjustment() * (this.accelTopSpeed / 100);
   }
 
   private speedDifferenceAdjustment(): number {

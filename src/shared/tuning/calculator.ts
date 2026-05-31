@@ -39,6 +39,31 @@ export interface CarGeometry {
   engineLocation: EngineLocation;
 }
 
+/** Per-tune balance/stiffness knobs exposed in the Customize panel. */
+export interface TuneModifiers {
+  /** Overall handling bias (understeer↔oversteer). Affects spring split + ARB bias. */
+  overallBalance: number;
+  /** Turn-entry damping bias (understeer↔oversteer). Affects front bump + brake bias. */
+  turnEntryBalance: number;
+  /** Turn-exit damping bias (understeer↔oversteer). Affects rear bump. */
+  turnExitBalance: number;
+  /** Spring stiffness scalar — also shifts ride height. */
+  rideStiffness: number;
+  /** Anti-roll bar stiffness scalar. */
+  rollStiffness: number;
+  /** Gearing bias toward acceleration vs. top speed (affects gear spacing). */
+  accelTopSpeed: number;
+}
+
+export const DEFAULT_MODIFIERS: TuneModifiers = {
+  overallBalance: 100,
+  turnEntryBalance: 100,
+  turnExitBalance: 100,
+  rideStiffness: 100,
+  rollStiffness: 100,
+  accelTopSpeed: 100,
+};
+
 export interface TuneRequest {
   /** Car weight in kilograms. */
   weightKg: number;
@@ -51,6 +76,8 @@ export interface TuneRequest {
   geometry: CarGeometry;
   /** Optional gearing inputs; when present, gear ratios are calculated. */
   gearing?: GearingRequest;
+  /** Optional tune-balance customisation; defaults to all 100 (neutral). */
+  modifiers?: TuneModifiers;
 }
 
 export interface TuneResult {
@@ -132,6 +159,10 @@ export class TuneCalculator {
   private result: Partial<TuneResult> = {};
 
   constructor(private req: TuneRequest) {}
+
+  private get mods(): TuneModifiers {
+    return this.req.modifiers ?? DEFAULT_MODIFIERS;
+  }
 
   calculate(): TuneResult {
     this.initialize();
@@ -349,12 +380,12 @@ export class TuneCalculator {
     const isDrag = this.req.tuneType === TuneType.Drag;
     const baseF = isDrag ? 2.25 : this.getBaseF();
     const stiffness = this.wStiffness;
-    const rideStiffness = TUNE_MODIFIER_DEFAULT;
+    const rideStiffness = this.mods.rideStiffness;
 
     if (this.req.drivetrain === Drivetrain.RWD) this.o3 -= 0.618;
     if (this.req.drivetrain === Drivetrain.AWD) this.o3 -= 0.618;
 
-    const s = 100 + 0.1 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3;
+    const s = 100 + 0.1 * (100 - this.mods.overallBalance) - this.o3;
     if (this.req.tuneType === TuneType.Dry) this.o1 *= 0.905;
     if (this.req.performanceIndex > 900 && this.req.geometry.height < 41 * 0.025) this.o1 *= 1.2;
 
@@ -463,7 +494,7 @@ export class TuneCalculator {
   /** Rally springs + ride height (Se.step03). `mapRates` is identity here. */
   private stepSpringsRally(): void {
     const n = this.req.percentFront / 100;
-    const rideStiffness = TUNE_MODIFIER_DEFAULT;
+    const rideStiffness = this.mods.rideStiffness;
     let s = (this.rallyBaseF() * rideStiffness) / 100 * this.o1;
 
     const { minW: l, maxW: u } = this.rallySpringLimit();
@@ -473,7 +504,7 @@ export class TuneCalculator {
     if (s > h) s = h;
     else if (s < c) s = c;
 
-    const d = 100 + 0.1 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3;
+    const d = 100 + 0.1 * (100 - this.mods.overallBalance) - this.o3;
     let g = (s * d) / 100 * this.p06;
     let m = (s * (100 - (d - 100))) / 100 * this.p07;
     if (g > u || m > u) {
@@ -599,12 +630,12 @@ export class TuneCalculator {
   private stepSpringsTruck(): void {
     const n = this.req.percentFront / 100;
     const limit = this.truckSuspensionLimit();
-    const rideStiffness = TUNE_MODIFIER_DEFAULT;
+    const rideStiffness = this.mods.rideStiffness;
     let a = (this.truckBaseF(limit.minW) * rideStiffness) / 100 * this.o1;
     if (a > limit.maxW) a = limit.maxW;
     else if (a < limit.minW) a = limit.minW;
 
-    const s = 100 + 0.1 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3;
+    const s = 100 + 0.1 * (100 - this.mods.overallBalance) - this.o3;
     const hRad = 2 * a * Math.PI;
     const d = (hRad * (100 - (s - 100))) / 100 * this.p07;
     this.E16 = 0.5 * this.E14 * Math.pow((hRad * s) / 100 * this.p06, 2);
@@ -639,8 +670,8 @@ export class TuneCalculator {
     f *= c;
     h *= c;
 
-    const g = l / (1 + (f + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05)));
-    const m = u / (h - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08) + 1);
+    const g = l / (1 + (f + 0.01425 * (100 - this.mods.turnEntryBalance * this.p05)));
+    const m = u / (h - 0.01425 * (100 - this.mods.turnExitBalance * this.p08) + 1);
     const reboundFront = l - g;
     const reboundRear = u - m;
 
@@ -822,7 +853,7 @@ export class TuneCalculator {
   private stepDampingRally(): void {
     const nFront = 2 * Math.sqrt(0.5 * this.E14 * this.E16);
     const nRear = 2 * Math.sqrt(0.5 * this.E15 * this.E17);
-    const a = this.rallyStepd() * (1 + ((TUNE_MODIFIER_DEFAULT - 100) / 100) * 0.5);
+    const a = this.rallyStepd() * (1 + ((this.mods.rideStiffness - 100) / 100) * 0.5);
     const u = nFront * a * 0.00101972;
     const fv = nRear * a * 0.00101972;
 
@@ -834,8 +865,8 @@ export class TuneCalculator {
     h *= dd;
     c *= dd;
 
-    const g = h + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05);
-    const m = c - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08);
+    const g = h + 0.01425 * (100 - this.mods.turnEntryBalance * this.p05);
+    const m = c - 0.01425 * (100 - this.mods.turnExitBalance * this.p08);
     let bumpFront = u / (1 + g);
     let bumpRear = fv / (1 + m);
 
@@ -917,8 +948,8 @@ export class TuneCalculator {
     l *= 0.9;
     u *= 0.9;
 
-    const g = l / (1 + (f + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05)));
-    const m = u / (h - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08) + 1);
+    const g = l / (1 + (f + 0.01425 * (100 - this.mods.turnEntryBalance * this.p05)));
+    const m = u / (h - 0.01425 * (100 - this.mods.turnExitBalance * this.p08) + 1);
     const reboundFront = l - g;
     const reboundRear = u - m;
     const map = isDrag ? (n: number) => n : (n: number) => this.mapDamping(n);
@@ -954,8 +985,8 @@ export class TuneCalculator {
     f *= 0.9;
     h *= 0.9;
 
-    const bumpFront = f / (1 + (c + 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p05)));
-    const bumpRear = h / (d - 0.01425 * (100 - TUNE_MODIFIER_DEFAULT * this.p08) + 1);
+    const bumpFront = f / (1 + (c + 0.01425 * (100 - this.mods.turnEntryBalance * this.p05)));
+    const bumpRear = h / (d - 0.01425 * (100 - this.mods.turnExitBalance * this.p08) + 1);
     const reboundFront = f - bumpFront;
     const reboundRear = h - bumpRear;
 
@@ -994,12 +1025,12 @@ export class TuneCalculator {
     const s = e / i;
     const a = (Math.PI * this.E16 * Math.pow(this.averageTrack, 2)) / 360;
     const l = (Math.PI * this.E17 * Math.pow(this.averageTrack, 2)) / 360;
-    const f = (s * (this.get05Bias() + 0.25 * (100 - TUNE_MODIFIER_DEFAULT) - this.o3)) / 100;
+    const f = (s * (this.get05Bias() + 0.25 * (100 - this.mods.overallBalance) - this.o3)) / 100;
     const d = s - f - l;
     const g = (360 * (f - a)) / (Math.PI * Math.pow(this.req.geometry.frontTrack, 2));
     const m = (360 * d) / (Math.PI * Math.pow(this.req.geometry.rearTrack, 2));
 
-    const rollStiffness = TUNE_MODIFIER_DEFAULT;
+    const rollStiffness = this.mods.rollStiffness;
     const R = ((0.00101972 * g) / 10) * (rollStiffness / 100) * this.o2;
     const F = ((0.00101972 * m) / 10) * (rollStiffness / 100) * this.o2;
 
@@ -1012,7 +1043,7 @@ export class TuneCalculator {
   // ---- step 6: brakes -------------------------------------------------------
 
   private stepBrakes(): void {
-    let l = this.sigmoid(TUNE_MODIFIER_DEFAULT, 48, 52, 100, -0.1);
+    let l = this.sigmoid(this.mods.turnEntryBalance, 48, 52, 100, -0.1);
     l = 100 - l; // Horizon
     this.result.brakes = new BrakeValue(l);
   }
@@ -1077,17 +1108,28 @@ export class TuneCalculator {
     this.rDecelDefault = this.boundary(this.rDecelDefault, this.rDecelLower, this.rDecelUpper);
     this.centerDefault = this.mapF(l, -0.4, 0.4, this.centerLower, this.centerUpper);
 
-    // Balance modifiers neutral (100) ⇒ multipliers collapse to 1.
-    const front = new DifferentialValue(this.fAccelDefault, this.fDecelDefault);
-    const rear = new DifferentialValue(this.rAccelDefault, this.rDecelDefault);
-    this.result.differentials = new Differentials(front, rear, this.centerDefault);
+    // Apply balance-modifier multipliers (source step07). All multipliers
+    // collapse to 1 when modifiers are at the neutral default of 100.
+    const as = this.adjustmentScale;
+    const exitM = (this.mods.turnExitBalance - 100) * as + 100;
+    const entryM = (100 - this.mods.turnEntryBalance) * as + 100;
+    const overallM = (this.mods.overallBalance - 100) * as / 1.5 + 100;
+    const front = new DifferentialValue(
+      this.fAccelDefault * ((100 - this.mods.turnExitBalance) * as + 100) / 100,
+      this.fDecelDefault * ((100 - this.mods.turnEntryBalance) * as + 100) / 100
+    );
+    const rear = new DifferentialValue(
+      this.rAccelDefault * exitM / 100,
+      this.rDecelDefault * entryM / 100
+    );
+    this.result.differentials = new Differentials(front, rear, this.centerDefault * overallM / 100);
   }
 
   // ---- step 8: gearing ------------------------------------------------------
 
   private stepGearing(): void {
     if (!this.req.gearing) return;
-    const calc = new GearCalculator(this.req.gearing, true, this.B11);
+    const calc = new GearCalculator(this.req.gearing, true, this.B11, this.mods.accelTopSpeed);
     this.result.gears = calc.calculate();
   }
 
