@@ -8,6 +8,7 @@ import { useEffectiveTimeWindow } from '../../hooks/useEffectiveTimeWindow';
 import { CarModel } from './CarModel';
 import { TrackPath } from './TrackPath';
 import { ValidationOverlay, VALIDATION_COLORS } from './ValidationOverlay';
+import { CornersOverlay, CORNER_COLORS } from './CornersOverlay';
 import { Markers, LapMarker } from './Markers';
 import { RaceOverlay } from './RaceOverlay';
 import type { TrackMode, PathColorMetric, FztSession, TrackFrame } from '@shared/track';
@@ -86,11 +87,12 @@ interface SceneProps {
   fitTrigger: number;
   followCar: boolean;
   showValidation: boolean;
+  showCorners: boolean;
   /** Windowed frames for path/overlay display; may be a time-sliced subset of the full store frames. */
   displayFrames: TrackFrame[];
 }
 
-function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar, showValidation, displayFrames }: SceneProps) {
+function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitTrigger, followCar, showValidation, showCorners, displayFrames }: SceneProps) {
   const frames = useTrackStore((s) => s.frames);
   const laps = useTrackStore((s) => s.laps);
   const positionChanges = useTrackStore((s) => s.positionChanges);
@@ -128,7 +130,8 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
         {commonLights}
         {grid}
         <TrackPath frames={pbFrames} metric={metric} rebuildEveryFrame />
-        {showValidation && <ValidationOverlay frames={pbFrames} rebuildEveryFrame />}
+        {showValidation && <ValidationOverlay frames={pbFrames} />}
+        {showCorners && <CornersOverlay frames={pbFrames} />}
         <CarModel playbackFrame={currentFrame} />
         {session.mode === 'race' && (
           <>
@@ -158,7 +161,10 @@ function Scene({ isTracking, isPlayback, session, frameIndex, metric, mode, fitT
         <TrackPath frames={displayFrames} metric={metric} rebuildEveryFrame={isWindowed} />
       )}
       {showValidation && (isTracking || displayFrames.length > 0) && (
-        <ValidationOverlay frames={displayFrames} rebuildEveryFrame={isWindowed} />
+        <ValidationOverlay frames={displayFrames} />
+      )}
+      {showCorners && (isTracking || displayFrames.length > 0) && (
+        <CornersOverlay frames={displayFrames} />
       )}
       <CarModel />
       {mode === 'race' && (
@@ -182,9 +188,10 @@ interface TrackViewerProps {
   isTracking: boolean;
   metric: PathColorMetric;
   showValidation: boolean;
+  showCorners: boolean;
 }
 
-export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackViewerProps) {
+export function TrackViewer({ mode, isTracking, metric, showValidation, showCorners }: TrackViewerProps) {
   const session = usePlaybackStore((s) => s.session);
   const frameIndex = usePlaybackStore((s) => s.frameIndex);
   const frames = useTrackStore((s) => s.frames);
@@ -231,6 +238,7 @@ export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackV
             fitTrigger={fitTrigger}
             followCar={followCar}
             showValidation={showValidation}
+            showCorners={showCorners}
             displayFrames={displayFrames}
           />
           <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
@@ -264,15 +272,29 @@ export function TrackViewer({ mode, isTracking, metric, showValidation }: TrackV
         </button>
       </div>
 
-      {/* Validation legend */}
-      {showValidation && (
-        <div className="absolute bottom-3 left-3 flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
-          <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">
-            Validation
-          </span>
-          <LegendRow color={VALIDATION_COLORS.collision} label="Collision" shape="dot" />
-          <LegendRow color={VALIDATION_COLORS.offRoad} label="Off-road" shape="line" />
-          <LegendRow color={VALIDATION_COLORS.airborne} label="Airborne" shape="line" />
+      {/* Legends */}
+      {(showValidation || showCorners) && (
+        <div className="absolute bottom-3 left-3 flex flex-col gap-2">
+          {showValidation && (
+            <div className="flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
+              <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">
+                Validation
+              </span>
+              <LegendRow color={VALIDATION_COLORS.collision} label="Collision"  shape="dot"  />
+              <LegendRow color={VALIDATION_COLORS.offRoad}   label="Off-road"   shape="line" />
+              <LegendRow color={VALIDATION_COLORS.airborne}  label="Airborne"   shape="line" />
+              <LegendRow color={VALIDATION_COLORS.handbrake} label="Handbrake"  shape="line" />
+            </div>
+          )}
+          {showCorners && (
+            <div className="flex flex-col gap-1 px-2.5 py-2 rounded border border-border-muted bg-bg-surface/80 backdrop-blur">
+              <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-text-dim mb-0.5">
+                Corners
+              </span>
+              <LegendRow color={CORNER_COLORS.mid}  label="Mid-corner"    shape="line" />
+              <LegendRow color={CORNER_COLORS.exit} label="Corner exit"   shape="line" />
+            </div>
+          )}
         </div>
       )}
 

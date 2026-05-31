@@ -7,7 +7,7 @@ import type {
   TrackFrame,
   TrackMode,
 } from '@shared/track';
-import { isOffRoad, isAirborne, isCollisionImpulse } from '@shared/analysis/frameFlags';
+import { isOffRoad, isAirborne, isCollisionImpulse, isHandbrake } from '@shared/analysis/frameFlags';
 
 /** Minimum distance (metres) a car must travel before adding a new path point. */
 const MIN_STEP_M = 0.3;
@@ -139,6 +139,7 @@ export const useTrackStore = create<TrackStoreState>((set, get) => ({
       offRoad: isOffRoad(data),
       airborne: isAirborne(data),
       collision: isCollisionImpulse(data),
+      handbrake: isHandbrake(data),
       racePos: data.racePosition,
       lapNumber: data.lapNumber,
       currentLap: data.currentLap,

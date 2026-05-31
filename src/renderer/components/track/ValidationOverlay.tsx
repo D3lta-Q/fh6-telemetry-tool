@@ -1,193 +1,93 @@
-import { useRef, useMemo, useEffect, type MutableRefObject } from 'react';
+import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
+import { Line } from '@react-three/drei';
 import type { TrackFrame } from '@shared/track';
 
 /**
- * Overlays the analyser's validation flags on the 3D path:
- *   - off-road : orange line segments where the car is on a loose surface
- *   - airborne : purple line segments where all wheels are drooped (jumps)
- *   - collision: red points at hard-impact frames
- *
- * These read the denormalised `offRoad` / `airborne` / `collision` booleans on
- * each TrackFrame (populated at record time), so the overlay works for live
- * recordings and saved sessions alike. Mounting/unmounting (driven by the
- * Track tab toggle) naturally rebuilds the geometry from scratch.
+ * Overlays validation flags on the 3D path as thick coloured line segments:
+ *   - off-road   : brown — car on a loose/rough surface
+ *   - airborne   : light blue — all wheels drooped (jump)
+ *   - handbrake  : light purple — lever engaged
+ *   - collision  : red — hard impact impulse (rendered as large point markers)
  */
 
-const MAX_POINTS = 200_000;
-
 export const VALIDATION_COLORS = {
-  offRoad: '#ff8c00',
-  airborne: '#b14dff',
-  collision: '#ff3c1c',
+  offRoad:   '#8B4513',  // brown
+  airborne:  '#87CEEB',  // light blue
+  handbrake: '#C084FC',  // light purple
+  collision: '#ff3c1c',  // red
 } as const;
+
+const LINE_WIDTH = 5;
+
+type FlagKey = 'offRoad' | 'airborne' | 'handbrake';
+
+/** Returns [start, end, start, end, ...] point pairs for thick LineSegments. */
+function buildSegmentPts(
+  frames: TrackFrame[],
+  field: FlagKey,
+  yOff: number,
+): [number, number, number][] {
+  const pts: [number, number, number][] = [];
+  for (let i = 1; i < frames.length; i++) {
+    const p = frames[i - 1];
+    const c = frames[i];
+    if (p[field] && c[field]) {
+      pts.push([p.x, p.y + yOff, p.z], [c.x, c.y + yOff, c.z]);
+    }
+  }
+  return pts;
+}
 
 interface Props {
   frames: TrackFrame[];
-  /** Playback re-scans every render (frames array is sliced as time advances). */
-  rebuildEveryFrame?: boolean;
 }
 
-export function ValidationOverlay({ frames, rebuildEveryFrame = false }: Props) {
-  const offRoadGeo = useMemo(() => makeLineGeo(), []);
-  const airborneGeo = useMemo(() => makeLineGeo(), []);
-  const collisionGeo = useMemo(() => makePointGeo(), []);
+export function ValidationOverlay({ frames }: Props) {
+  const offRoadPts   = useMemo(() => buildSegmentPts(frames, 'offRoad',   0.30), [frames]);
+  const airbornePts  = useMemo(() => buildSegmentPts(frames, 'airborne',  0.45), [frames]);
+  const handbrakePts = useMemo(() => buildSegmentPts(frames, 'handbrake', 0.20), [frames]);
 
-  const offRoadMat = useMemo(() => new THREE.LineBasicMaterial({ color: VALIDATION_COLORS.offRoad }), []);
-  const airborneMat = useMemo(() => new THREE.LineBasicMaterial({ color: VALIDATION_COLORS.airborne }), []);
+  // Collision geometry — imperative so we can update a fixed object efficiently.
+  const collisionGeo = useMemo(() => new THREE.BufferGeometry(), []);
   const collisionMat = useMemo(
-    () => new THREE.PointsMaterial({ color: VALIDATION_COLORS.collision, size: 6, sizeAttenuation: false }),
-    []
+    () => new THREE.PointsMaterial({ color: VALIDATION_COLORS.collision, size: 10, sizeAttenuation: false }),
+    [],
   );
-
-  const offRoadLine = useMemo(() => lineSegments(offRoadGeo, offRoadMat), [offRoadGeo, offRoadMat]);
-  const airborneLine = useMemo(() => lineSegments(airborneGeo, airborneMat), [airborneGeo, airborneMat]);
-  const collisionPoints = useMemo(() => {
+  const collisionPts = useMemo(() => {
     const p = new THREE.Points(collisionGeo, collisionMat);
     p.frustumCulled = false;
     return p;
   }, [collisionGeo, collisionMat]);
 
-  const offRoadBuilt = useRef(0);
-  const airborneBuilt = useRef(0);
-  const collisionBuilt = useRef(0);
-
-  // Reset when frames are cleared (new recording/tracking started).
-  // Skip when rebuildEveryFrame is active to avoid a one-frame geometry flash.
   useEffect(() => {
-    if (!rebuildEveryFrame && frames.length < offRoadBuilt.current) {
-      offRoadBuilt.current = 0;
-      airborneBuilt.current = 0;
-      collisionBuilt.current = 0;
-      offRoadGeo.setDrawRange(0, 0);
-      airborneGeo.setDrawRange(0, 0);
-      collisionGeo.setDrawRange(0, 0);
+    const positions: number[] = [];
+    for (const f of frames) {
+      if (f.collision) positions.push(f.x, f.y + 0.6, f.z);
     }
-  }, [frames.length, rebuildEveryFrame, offRoadGeo, airborneGeo, collisionGeo]);
-
-  useFrame(() => {
-    updateLineOverlay(offRoadGeo, offRoadBuilt, frames, 'offRoad', rebuildEveryFrame);
-    updateLineOverlay(airborneGeo, airborneBuilt, frames, 'airborne', rebuildEveryFrame);
-    updatePointOverlay(collisionGeo, collisionBuilt, frames, rebuildEveryFrame);
-  });
+    collisionGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(positions), 3),
+    );
+  }, [frames, collisionGeo]);
 
   useEffect(
-    () => () => {
-      offRoadGeo.dispose();
-      airborneGeo.dispose();
-      collisionGeo.dispose();
-      offRoadMat.dispose();
-      airborneMat.dispose();
-      collisionMat.dispose();
-    },
-    [offRoadGeo, airborneGeo, collisionGeo, offRoadMat, airborneMat, collisionMat]
+    () => () => { collisionGeo.dispose(); collisionMat.dispose(); },
+    [collisionGeo, collisionMat],
   );
 
   return (
     <>
-      <primitive object={offRoadLine} />
-      <primitive object={airborneLine} />
-      <primitive object={collisionPoints} />
+      {offRoadPts.length >= 2 && (
+        <Line points={offRoadPts} segments lineWidth={LINE_WIDTH} color={VALIDATION_COLORS.offRoad} />
+      )}
+      {airbornePts.length >= 2 && (
+        <Line points={airbornePts} segments lineWidth={LINE_WIDTH} color={VALIDATION_COLORS.airborne} />
+      )}
+      {handbrakePts.length >= 2 && (
+        <Line points={handbrakePts} segments lineWidth={LINE_WIDTH} color={VALIDATION_COLORS.handbrake} />
+      )}
+      <primitive object={collisionPts} />
     </>
   );
-}
-
-// ---- helpers -----------------------------------------------------------------
-
-function makeLineGeo(): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
-  geo.setDrawRange(0, 0);
-  return geo;
-}
-
-function makePointGeo(): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
-  geo.setDrawRange(0, 0);
-  return geo;
-}
-
-function lineSegments(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.LineSegments {
-  const l = new THREE.LineSegments(geo, mat);
-  l.frustumCulled = false;
-  return l;
-}
-
-/** Draw connected segments wherever a boolean flag is active on consecutive frames. */
-function updateLineOverlay(
-  geo: THREE.BufferGeometry,
-  builtRef: MutableRefObject<number>,
-  frames: TrackFrame[],
-  field: 'offRoad' | 'airborne',
-  rebuildEveryFrame: boolean
-): void {
-  const target = frames.length;
-  if (!rebuildEveryFrame && builtRef.current >= target) return;
-
-  const posAttr = geo.attributes['position'] as THREE.BufferAttribute;
-  const arr = posAttr.array as Float32Array;
-
-  const scanStart = rebuildEveryFrame ? 0 : builtRef.current;
-  let segCount = rebuildEveryFrame ? 0 : geo.drawRange.count / 2;
-  let prevActive = false;
-  let prevX = 0;
-  let prevY = 0;
-  let prevZ = 0;
-
-  for (let i = scanStart; i < Math.min(target, MAX_POINTS / 2); i++) {
-    const f = frames[i];
-    const active = !!f[field];
-    if (active && prevActive) {
-      const base = segCount * 6;
-      arr[base] = prevX;
-      arr[base + 1] = prevY + 0.3;
-      arr[base + 2] = prevZ;
-      arr[base + 3] = f.x;
-      arr[base + 4] = f.y + 0.3;
-      arr[base + 5] = f.z;
-      segCount++;
-    }
-    prevActive = active;
-    prevX = f.x;
-    prevY = f.y;
-    prevZ = f.z;
-  }
-
-  posAttr.needsUpdate = true;
-  geo.setDrawRange(0, segCount * 2);
-  builtRef.current = target;
-}
-
-/** Draw a point at each collision-flagged frame. */
-function updatePointOverlay(
-  geo: THREE.BufferGeometry,
-  builtRef: MutableRefObject<number>,
-  frames: TrackFrame[],
-  rebuildEveryFrame: boolean
-): void {
-  const target = frames.length;
-  if (!rebuildEveryFrame && builtRef.current >= target) return;
-
-  const posAttr = geo.attributes['position'] as THREE.BufferAttribute;
-  const arr = posAttr.array as Float32Array;
-
-  let count = rebuildEveryFrame ? 0 : geo.drawRange.count;
-  const scanStart = rebuildEveryFrame ? 0 : builtRef.current;
-
-  for (let i = scanStart; i < Math.min(target, MAX_POINTS); i++) {
-    const f = frames[i];
-    if (f.collision) {
-      const base = count * 3;
-      arr[base] = f.x;
-      arr[base + 1] = f.y + 0.5;
-      arr[base + 2] = f.z;
-      count++;
-    }
-  }
-
-  posAttr.needsUpdate = true;
-  geo.setDrawRange(0, count);
-  builtRef.current = target;
 }

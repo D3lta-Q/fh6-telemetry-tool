@@ -46,6 +46,11 @@ export function isAirborne(d: TelemetryData): boolean {
   );
 }
 
+/** Handbrake lever engaged above 10% travel. */
+export function isHandbrake(d: TelemetryData): boolean {
+  return d.handBrake / 255 > 0.1;
+}
+
 /** A near-instant deceleration/impact impulse without a matching brake input. */
 export function isCollisionImpulse(d: TelemetryData): boolean {
   const latG = d.accelerationX / G;
